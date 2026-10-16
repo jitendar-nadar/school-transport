@@ -6,6 +6,7 @@ import { ROLES } from "@/types/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 export const GET = apiHandler(async ({ req, user }) => {
   const query = readQuery(req, listQuerySchema);

@@ -28,15 +28,17 @@ export default function OverviewPage() {
     let stop = false;
     async function load() {
       try {
-        const [summary, active] = await Promise.all([
+        const [summaryResult, activeResult] = await Promise.allSettled([
           api<Overview>("/api/v1/dashboard/overview"),
           api<Trip[]>("/api/v1/dashboard/trips/active"),
         ]);
-        if (!stop) {
-          setOverview(summary.data);
-          setTrips(active.data);
-          setError("");
-        }
+        if (stop) return;
+        const problems: string[] = [];
+        if (summaryResult.status === "fulfilled") setOverview(summaryResult.value.data);
+        else problems.push(summaryResult.reason instanceof Error ? summaryResult.reason.message : "Could not load the overview.");
+        if (activeResult.status === "fulfilled") setTrips(activeResult.value.data);
+        else problems.push(activeResult.reason instanceof Error ? activeResult.reason.message : "Could not load active trips.");
+        setError(problems.join(" "));
       } catch (caught) {
         if (!stop) setError(caught instanceof Error ? caught.message : "Could not load the dashboard.");
       }

@@ -71,12 +71,19 @@ export function toErrorResponse(error: unknown) {
   }
 
   console.error(error);
+  const hint = error instanceof Error ? `${error.name}: ${error.message}` : "";
+  const safeHint = hint.replace(/mongodb(?:\+srv)?:\/\/\S+/gi, "mongodb://redacted").slice(0, 240);
+  const network = /timed out|Server selection|whitelist|ReplicaSetNoPrimary|MongoServerSelection|MongoNetwork|ECONNREFUSED|ETIMEDOUT|not connected/i.test(safeHint);
   return NextResponse.json(
     {
       success: false,
       error: {
-        code: "INTERNAL_ERROR",
-        message: "Something went wrong. Please try again.",
+        code: network ? "DATABASE_NETWORK" : "INTERNAL_ERROR",
+        message: network
+          ? "Could not reach MongoDB Atlas. In Atlas, open Network Access and allow 0.0.0.0/0 so this deployment can connect."
+          : safeHint
+            ? `Something went wrong. ${safeHint}`
+            : "Something went wrong. Please try again.",
       },
     },
     { status: 500 },
