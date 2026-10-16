@@ -36,10 +36,18 @@ export async function activeTrips(user: AuthUser, schoolId?: string) {
     .populate("driverId", "name phone")
     .lean();
   return Promise.all(
-    trips.map(async (trip) => ({
-      ...(serialize(trip) as object),
-      liveLocation: await readActiveTrip(String(trip._id)),
-    })),
+    trips.map(async (trip) => {
+      let liveLocation = null;
+      try {
+        liveLocation = await readActiveTrip(String(trip._id));
+      } catch (error) {
+        console.error(error);
+      }
+      return {
+        ...(serialize(trip) as object),
+        liveLocation,
+      };
+    }),
   );
 }
 

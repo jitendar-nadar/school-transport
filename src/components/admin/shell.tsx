@@ -63,6 +63,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   const pathname = usePathname();
   const router = useRouter();
   const [schools, setSchools] = useState<SchoolOption[]>([]);
+  const [schoolsError, setSchoolsError] = useState("");
   const storedSchoolId = useSyncExternalStore(subscribeSchool, selectedSchoolId, () => null);
   const schoolId = user.schoolId || storedSchoolId;
   setApiScope({ role: user.role, schoolId });
@@ -71,9 +72,15 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
     if (user.role !== "PLATFORM_ADMIN") return;
     let ignore = false;
     api<SchoolOption[]>("/api/v1/schools?limit=100", { school: false }).then((result) => {
-      if (!ignore) setSchools(result.data);
-    }).catch(() => {
-      if (!ignore) setSchools([]);
+      if (!ignore) {
+        setSchools(result.data);
+        setSchoolsError("");
+      }
+    }).catch((caught: unknown) => {
+      if (!ignore) {
+        setSchools([]);
+        setSchoolsError(caught instanceof Error ? caught.message : "Could not load schools.");
+      }
     });
     return () => {
       ignore = true;
@@ -147,7 +154,10 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
               </button>
             </div>
           </header>
-          <main className="px-5 py-6">{children}</main>
+          <main className="px-5 py-6">
+            {schoolsError ? <p className="mb-4 text-sm text-red-700">{schoolsError}</p> : null}
+            {children}
+          </main>
         </div>
       </div>
     </ScopeContext.Provider>
