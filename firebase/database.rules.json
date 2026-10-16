@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "activeTrips": {
+      "$tripId": {
+        ".read": "auth != null && root.child('tripAccess').child($tripId).child(auth.uid).val() === true",
+        ".write": false
+      }
+    },
+    "tripAccess": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
