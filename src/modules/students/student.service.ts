@@ -2,7 +2,10 @@ import { z } from "zod";
 import { requireSchoolId } from "@/lib/auth/guard";
 import { AppError, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
+import { BleTag } from "@/models/ble-tag";
+import { Assignment, Vehicle } from "@/models/fleet";
 import { Student } from "@/models/student";
+import { Trip, TripStudent } from "@/models/trip";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
@@ -69,7 +72,12 @@ export async function listStudents(
   if (query.status) filter.status = query.status;
   if (query.search) {
     const pattern = escapeRegex(query.search);
-    filter.$or = [{ name: { $regex: pattern, $options: "i" } }, { studentCode: { $regex: pattern, $options: "i" } }];
+    filter.$or = [
+      { name: { $regex: pattern, $options: "i" } },
+      { studentCode: { $regex: pattern, $options: "i" } },
+      { className: { $regex: pattern, $options: "i" } },
+      { division: { $regex: pattern, $options: "i" } },
+    ];
   }
   const result = await paginate(Student, filter, {
     page: query.page,
@@ -150,4 +158,26 @@ export async function updateStudent(user: AuthUser, id: string, input: z.infer<t
   });
   const saved = await Student.findById(student._id).populate(schoolPopulate).lean();
   return presentStudent(saved);
+}
+
+export async function deleteStudent(user: AuthUser, id: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const student = await Student.findOne({ _id: id, schoolId: tenant });
+  if (!student) throw notFound("Student");
+  const links = await TripStudent.find({ studentId: student._id }).select("tripId");
+  const active = await Trip.findOne({ _id: { $in: links.map((link) => link.tripId) }, status: "ACTIVE" }).select("_id");
+  if (active) throw new AppError(409, "IN_USE", "This student is on an active trip. End that trip before deleting the student.");
+  await Vehicle.updateMany({ schoolId: tenant, studentIds: student._id }, { $pull: { studentIds: student._id } });
+  await Assignment.deleteMany({ schoolId: tenant, studentId: student._id });
+  await BleTag.updateMany({ schoolId: tenant, studentId: student._id }, { $set: { studentId: null, status: "UNASSIGNED", assignedAt: null } });
+  await student.deleteOne();
+  await writeAudit({
+    schoolId: tenant,
+    actorId: user.id,
+    action: "STUDENT_DELETED",
+    entityType: "Student",
+    entityId: id,
+    after: { name: student.name },
+  });
+  return { deleted: true };
 }

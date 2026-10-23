@@ -1,9 +1,11 @@
+import { Types, type PipelineStage } from "mongoose";
 import { z } from "zod";
 import { requireSchoolId } from "@/lib/auth/guard";
 import { AppError, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
 import { Assignment, Route, Stop, Vehicle } from "@/models/fleet";
 import { Student } from "@/models/student";
+import { Trip } from "@/models/trip";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
@@ -20,9 +22,19 @@ export const vehicleSchema = z.object({
   capacity: z.coerce.number().int().min(1).max(80),
   driverIds: optionalIds,
   attendantIds: optionalIds,
+  studentIds: optionalIds,
   status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
 });
-export const updateVehicleSchema = vehicleSchema.partial();
+export const updateVehicleSchema = z.object({
+  schoolId: objectIdSchema.optional(),
+  vehicleNumber: z.string().trim().min(1).max(30).optional(),
+  vehicleType: z.enum(["BUS", "VAN"]).optional(),
+  capacity: z.coerce.number().int().min(1).max(80).optional(),
+  driverIds: z.array(objectIdSchema).optional(),
+  attendantIds: z.array(objectIdSchema).optional(),
+  studentIds: z.array(objectIdSchema).optional(),
+  status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
+});
 
 export const stopSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -69,6 +81,30 @@ async function assertCrew(schoolId: string, ids: string[], role: "DRIVER" | "ATT
   }
 }
 
+async function assertStudents(schoolId: string, ids: string[], capacity: number, vehicleId?: string) {
+  if (ids.length > capacity) {
+    throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new AppError(422, "DUPLICATE_STUDENT", "Each student can be mapped only once.");
+  }
+  if (!ids.length) return;
+  const students = await Student.find({ _id: { $in: ids }, schoolId, status: "ACTIVE" }).select("name").lean();
+  if (students.length !== ids.length) {
+    throw new AppError(422, "INVALID_STUDENT", "Every student must be an active student at this school.");
+  }
+  const taken = await Vehicle.find({
+    schoolId,
+    ...(vehicleId ? { _id: { $ne: vehicleId } } : {}),
+    status: { $ne: "INACTIVE" },
+    studentIds: { $in: ids },
+  }).select("vehicleNumber studentIds").lean();
+  if (!taken.length) return;
+  const busy = new Set(taken.flatMap((vehicle) => (vehicle.studentIds || []).map((id: unknown) => String(id))));
+  const names = students.filter((student) => busy.has(String(student._id))).map((student) => student.name);
+  throw new AppError(422, "STUDENT_ALREADY_MAPPED", `${names.join(", ") || "A student"} is already mapped to ${taken[0]?.vehicleNumber || "another vehicle"}.`);
+}
+
 async function assertStops(schoolId: string, ids: string[]) {
   const count = await Stop.countDocuments({ _id: { $in: ids }, schoolId });
   if (count !== ids.length) throw new AppError(422, "INVALID_STOP", "Every stop must belong to this school.");
@@ -93,16 +129,77 @@ export async function listVehicles(user: AuthUser, query: { page: number; limit:
     populate: [
       { path: "driverIds", select: "name phone" },
       { path: "attendantIds", select: "name phone" },
+      { path: "studentIds", select: "name studentCode className division" },
     ],
   });
   return { items: result.items.map((item) => serialize(item)), meta: result.meta };
+}
+
+export async function listMappedStudents(user: AuthUser, query: { page: number; limit: number; search?: string; schoolId?: string }) {
+  const schoolId = requireSchoolId(user, query.schoolId);
+  const skip = (query.page - 1) * query.limit;
+  const pattern = query.search ? escapeRegex(query.search) : "";
+  const pipeline: PipelineStage[] = [
+    { $match: { schoolId: new Types.ObjectId(schoolId), studentIds: { $exists: true, $ne: [] } } },
+    { $unwind: "$studentIds" },
+    { $lookup: { from: Student.collection.collectionName, localField: "studentIds", foreignField: "_id", as: "student" } },
+    { $unwind: "$student" },
+  ];
+  if (pattern) {
+    pipeline.push({
+      $match: {
+        $or: [
+          { vehicleNumber: { $regex: pattern, $options: "i" } },
+          { "student.name": { $regex: pattern, $options: "i" } },
+          { "student.studentCode": { $regex: pattern, $options: "i" } },
+          { "student.className": { $regex: pattern, $options: "i" } },
+          { "student.division": { $regex: pattern, $options: "i" } },
+        ],
+      },
+    });
+  }
+  pipeline.push(
+    { $sort: { vehicleNumber: 1, "student.name": 1 } },
+    {
+      $facet: {
+        items: [
+          { $skip: skip },
+          { $limit: query.limit },
+          {
+            $project: {
+              _id: 0,
+        vehicleId: { $toString: "$_id" },
+        studentId: { $toString: "$student._id" },
+        vehicleNumber: 1,
+        studentName: "$student.name",
+        className: "$student.className",
+        division: "$student.division",
+        studentCode: "$student.studentCode",
+            },
+          },
+        ],
+        total: [{ $count: "count" }],
+      },
+    },
+  );
+  const [result] = await Vehicle.aggregate(pipeline as PipelineStage[]);
+  const total = result?.total?.[0]?.count ?? 0;
+  return {
+    items: (result?.items ?? []) as Array<{ vehicleNumber: string; studentName: string; className?: string; division?: string; studentCode: string }>,
+    meta: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / query.limit)),
+    },
+  };
 }
 
 export async function createVehicle(user: AuthUser, input: z.infer<typeof vehicleSchema>) {
   const schoolId = requireSchoolId(user, input.schoolId);
   await assertCrew(schoolId, input.driverIds, "DRIVER");
   await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
-  const vehicle = await Vehicle.create({ ...input, schoolId, status: input.status ?? "ACTIVE" });
+  const vehicle = await Vehicle.create({ ...input, schoolId, studentIds: [], status: input.status ?? "ACTIVE" });
   return serialize(vehicle.toObject());
 }
 
@@ -112,16 +209,43 @@ export async function updateVehicle(user: AuthUser, id: string, input: z.infer<t
   if (!vehicle) throw notFound("Vehicle");
   if (input.driverIds) await assertCrew(schoolId, input.driverIds, "DRIVER");
   if (input.attendantIds) await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
+  const capacity = input.capacity ?? vehicle.capacity;
+  if (input.studentIds) await assertStudents(schoolId, input.studentIds, capacity, id);
+  else if (input.capacity && (vehicle.studentIds?.length || 0) > input.capacity) {
+    throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
+  }
   Object.assign(vehicle, {
     vehicleNumber: input.vehicleNumber ?? vehicle.vehicleNumber,
     vehicleType: input.vehicleType ?? vehicle.vehicleType,
-    capacity: input.capacity ?? vehicle.capacity,
+    capacity,
     driverIds: input.driverIds ?? vehicle.driverIds,
     attendantIds: input.attendantIds ?? vehicle.attendantIds,
+    studentIds: input.studentIds ?? vehicle.studentIds,
     status: input.status ?? vehicle.status,
   });
   await vehicle.save();
   return serialize(vehicle.toObject());
+}
+
+export async function deleteVehicle(user: AuthUser, id: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const vehicle = await Vehicle.findOne({ _id: id, schoolId: tenant });
+  if (!vehicle) throw notFound("Vehicle");
+  const active = await Trip.findOne({ vehicleId: vehicle._id, status: "ACTIVE" }).select("_id");
+  if (active) throw new AppError(409, "IN_USE", "This vehicle has an active trip. End that trip before deleting it.");
+  const route = await Route.findOne({ vehicleId: vehicle._id }).select("name");
+  if (route) throw new AppError(409, "IN_USE", "Remove this vehicle from its routes before deleting it.");
+  await vehicle.deleteOne();
+  return { deleted: true };
+}
+
+export async function unmapStudent(user: AuthUser, vehicleId: string, studentId: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const vehicle = await Vehicle.findOne({ _id: vehicleId, schoolId: tenant });
+  if (!vehicle) throw notFound("Vehicle");
+  vehicle.studentIds = (vehicle.studentIds || []).filter((id: unknown) => String(id) !== studentId);
+  await vehicle.save();
+  return { deleted: true };
 }
 
 export async function listStops(user: AuthUser, query: { page: number; limit: number; search?: string; schoolId?: string }) {
@@ -156,6 +280,17 @@ export async function updateStop(user: AuthUser, id: string, input: z.infer<type
   if (input.latitude != null && input.longitude != null) stop.location = toPoint(input.latitude, input.longitude);
   await stop.save();
   return presentStop(stop.toObject());
+}
+
+export async function deleteStop(user: AuthUser, id: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const stop = await Stop.findOne({ _id: id, schoolId: tenant });
+  if (!stop) throw notFound("Stop");
+  const route = await Route.findOne({ schoolId: tenant, stops: stop._id }).select("name");
+  const assignment = await Assignment.findOne({ schoolId: tenant, $or: [{ morningStopId: stop._id }, { afternoonStopId: stop._id }] }).select("_id");
+  if (route || assignment) throw new AppError(409, "IN_USE", "This stop is used by a route or an assignment. Remove it there before deleting the stop.");
+  await stop.deleteOne();
+  return { deleted: true };
 }
 
 export async function listRoutes(user: AuthUser, query: { page: number; limit: number; search?: string; status?: string; schoolId?: string; direction?: string }) {
@@ -216,6 +351,17 @@ export async function updateRoute(user: AuthUser, id: string, input: z.infer<typ
   return serialize(route.toObject());
 }
 
+export async function deleteRoute(user: AuthUser, id: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const route = await Route.findOne({ _id: id, schoolId: tenant });
+  if (!route) throw notFound("Route");
+  const assignment = await Assignment.findOne({ schoolId: tenant, $or: [{ morningRouteId: route._id }, { afternoonRouteId: route._id }] }).select("_id");
+  const trip = await Trip.findOne({ routeId: route._id }).select("_id");
+  if (assignment || trip) throw new AppError(409, "IN_USE", "This route is used by an assignment or a trip. Remove that link before deleting the route.");
+  await route.deleteOne();
+  return { deleted: true };
+}
+
 async function assertAssignmentLinks(schoolId: string, input: {
   studentId?: string;
   morningRouteId?: string | null;
@@ -247,6 +393,30 @@ export async function listAssignments(user: AuthUser, query: { page: number; lim
   const schoolId = requireSchoolId(user, query.schoolId);
   const filter: Record<string, unknown> = { schoolId };
   if (query.status) filter.status = query.status;
+  if (query.search) {
+    const pattern = escapeRegex(query.search);
+    const [students, routes, stops] = await Promise.all([
+      Student.find({
+        schoolId,
+        $or: [
+          { name: { $regex: pattern, $options: "i" } },
+          { studentCode: { $regex: pattern, $options: "i" } },
+          { className: { $regex: pattern, $options: "i" } },
+          { division: { $regex: pattern, $options: "i" } },
+        ],
+      }).select("_id"),
+      Route.find({ schoolId, $or: [{ name: { $regex: pattern, $options: "i" } }, { routeCode: { $regex: pattern, $options: "i" } }] }).select("_id"),
+      Stop.find({ schoolId, name: { $regex: pattern, $options: "i" } }).select("_id"),
+    ]);
+    filter.$or = [
+      { status: { $regex: pattern, $options: "i" } },
+      { studentId: { $in: students.map((student) => student._id) } },
+      { morningRouteId: { $in: routes.map((route) => route._id) } },
+      { afternoonRouteId: { $in: routes.map((route) => route._id) } },
+      { morningStopId: { $in: stops.map((stop) => stop._id) } },
+      { afternoonStopId: { $in: stops.map((stop) => stop._id) } },
+    ];
+  }
   const result = await paginate(Assignment, filter, {
     page: query.page,
     limit: query.limit,
@@ -324,4 +494,12 @@ export async function updateAssignment(user: AuthUser, id: string, input: z.infe
     after: { status: assignment.status },
   });
   return serialize(assignment.toObject());
+}
+
+export async function deleteAssignment(user: AuthUser, id: string, schoolId?: string) {
+  const tenant = requireSchoolId(user, schoolId);
+  const assignment = await Assignment.findOne({ _id: id, schoolId: tenant });
+  if (!assignment) throw notFound("Assignment");
+  await assignment.deleteOne();
+  return { deleted: true };
 }

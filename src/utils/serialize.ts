@@ -23,3 +23,11 @@ export function serialize(value: unknown): unknown {
 export function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+export function searchClause(fields: string[], search?: string) {
+  const term = search?.trim();
+  if (!term) return {};
+  const pattern = escapeRegex(term);
+  const clauses = fields.map((field) => ({ [field]: { $regex: pattern, $options: "i" } }));
+  return clauses.length === 1 ? clauses[0] : { $or: clauses };
+}

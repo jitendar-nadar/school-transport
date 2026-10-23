@@ -7,7 +7,7 @@ import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
 import { objectIdSchema, optionalId } from "@/lib/validation/common";
-import { serialize } from "@/utils/serialize";
+import { escapeRegex, serialize } from "@/utils/serialize";
 import { fromPoint, toPoint } from "@/utils/geo";
 
 const settingsSchema = z.object({
@@ -58,7 +58,14 @@ export async function listSchools(user: AuthUser, query: { page: number; limit: 
   }
   const filter: Record<string, unknown> = {};
   if (query.status) filter.status = query.status;
-  if (query.search) filter.name = { $regex: query.search, $options: "i" };
+  if (query.search) {
+    const pattern = escapeRegex(query.search);
+    filter.$or = [
+      { name: { $regex: pattern, $options: "i" } },
+      { schoolCode: { $regex: pattern, $options: "i" } },
+      { contactEmail: { $regex: pattern, $options: "i" } },
+    ];
+  }
   const result = await paginate(School, filter, { page: query.page, limit: query.limit, sort: { name: 1 } });
   return { items: result.items.map(presentSchool), meta: result.meta };
 }

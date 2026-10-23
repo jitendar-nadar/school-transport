@@ -1,6 +1,6 @@
 # School Transport
 
-Multi-tenant backend and school administration console for BLE student cards and GPS bus tracking.
+Multi-tenant backend and administration console for BLE cards and GPS tracking. One application serves schools, companies, and truck fleets. Each group has its own tables.
 
 The admin console and REST API live in this Next.js app. Driver and parent mobile apps are separate React Native clients that call the same `/api/v1` API.
 
@@ -35,12 +35,14 @@ The seed password defaults to `ChangeMe123!`. Change it before any shared deploy
 
 | Role | Access |
 | --- | --- |
-| Platform admin | Schools, status, and every school's data after selecting that school |
-| School admin | People, students, BLE cards, vehicles, routes, stops, assignments, trips, alerts |
-| Driver / attendant | Assigned vehicle, trip start, BLE batches, boarding, drop-off, GPS, offline sync |
+| Platform admin | Schools, companies, and fleets. School screens use the selected school. Company and fleet screens send their own id. |
+| School admin | People, students, classes, BLE cards, gates, vehicles, routes, stops, assignments, trips, tours, alerts |
+| Company admin | Their company, its departments, employees, and out-of-office gaps |
+| Fleet admin | Their fleet, its trucks, tracker IMEIs, places, and planned truck trips |
+| Driver / attendant | Assigned school vehicle, trip start, BLE batches, boarding, drop-off, GPS, offline sync |
 | Parent | Own children, trip status, notification history, authorized live location |
 
-Every school-scoped query uses the caller's `schoolId`. A client-supplied school id is ignored unless the caller is a platform admin.
+School queries use `schoolId`. Company queries use `companyId`. Fleet queries use `fleetId`. A client-supplied tenant id is ignored unless the caller is a platform admin. Company and fleet admins are created with the company or fleet. They are not added on the school People screen.
 
 ## Trip safety
 
@@ -70,7 +72,7 @@ Without Firebase credentials the API still stores trips, detections, and notific
 
 ## Documents
 
-- [FLOW.md](FLOW.md) — sign-in, school setup, and one morning trip
+- [FLOW.md](FLOW.md) — school setup and one morning trip, then company attendance and a truck fleet
 - [API.md](API.md) — request and response reference for `/api/v1`
 
 ## API
@@ -107,6 +109,21 @@ Authenticated requests use `Authorization: Bearer <accessToken>` or the admin co
 - `POST /api/v1/parent/live-access`
 - `POST /api/v1/push-devices/register`
 - `DELETE /api/v1/push-devices/:id`
+- `GET|POST /api/v1/classes`
+- `GET|POST /api/v1/gates`
+- `GET|POST /api/v1/tours` and `PUT /api/v1/tours` for a headcount
+- `GET|POST /api/v1/companies` and `PATCH /api/v1/companies/:id`
+- `GET /api/v1/companies/summary`
+- `GET|POST /api/v1/departments`
+- `GET|POST /api/v1/employees`
+- `GET|POST /api/v1/attendance-gaps`
+- `GET /api/v1/attendance/board`, `PATCH /api/v1/attendance/policy`, `POST /api/v1/attendance/detections`
+- `GET /api/v1/attendance/me`, `POST /api/v1/attendance/field`, `GET /api/v1/attendance/report`
+- `GET|POST /api/v1/fleets` and `PATCH /api/v1/fleets/:id`
+- `GET /api/v1/fleets/summary`
+- `GET|POST /api/v1/trucks`
+- `GET|POST /api/v1/fleet-geofences`
+- `GET|POST /api/v1/fleet-trips`
 - `GET /api/v1/dashboard/overview`
 - `GET /api/v1/dashboard/trips/active`
 - `GET /api/v1/dashboard/trips/:id`

@@ -1,8 +1,8 @@
-# School transport API
+# Tracking platform API
 
 Base URL: `http://localhost:3000/api/v1`
 
-The admin console and the future driver and parent apps use this API. The operational walkthrough is in [FLOW.md](FLOW.md).
+The admin console and the future driver and parent apps use this API. School, company, and transport calls share this API and keep separate records. The operational walkthrough is in [FLOW.md](FLOW.md).
 
 ## Response shape
 
@@ -30,7 +30,7 @@ Ids are 24-character hex strings. The student class field is `className`. Coordi
 { "email": "schooladmin@abc.school", "password": "ChangeMe123!" }
 ```
 
-The email is trimmed and lowercased. A wrong email or password returns `401`. A suspended school returns `403`.
+The email is trimmed and lowercased. A wrong email or password returns `401`. A suspended school, company, or fleet returns `403`.
 
 | Method | Path | Who | Purpose |
 | --- | --- | --- | --- |
@@ -45,7 +45,9 @@ Access tokens are short-lived. Refresh tokens last 7 days, are stored only as a 
 
 School-scoped calls use the signed-in user’s `schoolId`. A platform admin must pass `schoolId` in the query string or JSON body. Any other role that sends a different `schoolId` receives `403 TENANT_MISMATCH`.
 
-List queries accept `page`, `limit` (max 100), `search`, `status`, and, for a platform admin, `schoolId`. Some lists also accept `role`, `direction`, or `vehicleType`.
+Company calls use `companyId`. Fleet calls use `fleetId`. A company admin is locked to their company. A fleet admin is locked to their fleet. A platform admin must pass the id. A mismatch returns `403 TENANT_MISMATCH`. A missing id returns `400 COMPANY_REQUIRED` or `400 FLEET_REQUIRED`.
+
+List queries accept `page`, `limit` (max 100), `search`, `status`, and, for a platform admin, `schoolId`, `companyId`, or `fleetId`. Some lists also accept `role`, `direction`, or `vehicleType`.
 
 ## Schools
 
@@ -94,7 +96,7 @@ Create body:
 }
 ```
 
-Roles: `PLATFORM_ADMIN`, `SCHOOL_ADMIN`, `DRIVER`, `ATTENDANT`, `PARENT`. Passwords need at least 8 characters, one letter, and one number. Only a platform admin can create a platform admin.
+Roles on this screen: `PLATFORM_ADMIN`, `SCHOOL_ADMIN`, `DRIVER`, `ATTENDANT`, `PARENT`. Passwords need at least 8 characters, one letter, and one number. Only a platform admin can create a platform admin. `COMPANY_ADMIN` and `FLEET_ADMIN` are created with the company or fleet, not here.
 
 ## Students
 
@@ -127,7 +129,7 @@ Guardians must be active parents in the same school. Consent gates alerts. The s
 | --- | --- | --- |
 | GET | `/ble-tags` | List cards |
 | POST | `/ble-tags` | Register a card |
-| PATCH | `/ble-tags/:id` | Update aliases, battery, or status |
+| PATCH | `/ble-tags/:id` | Update aliases, battery, or status (`UNASSIGNED`, `INACTIVE`, `LOST`, `RETIRED`). Inactive clears the student so a new card can be assigned. |
 | POST | `/ble-tags/:id/assign` | Body `{ "studentId" }` |
 | POST | `/ble-tags/:id/unassign` | Clear the student |
 
@@ -334,6 +336,237 @@ Platform admin and school admin.
 | GET | `/notifications` | School alert log |
 | GET | `/audit-logs` | Audit rows for the school |
 | GET | `/health` | Process health |
+
+## School gates, classes, and tours
+
+School admin and platform admin. A platform admin passes `schoolId`. These rows use the school. They are not company or fleet records.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET, POST | `/gates` | List or add a gate |
+| GET, POST | `/classes` | List or add a class and division |
+| GET | `/tours` | `{ tours, headcounts }` for the school |
+| POST | `/tours` | Add a tour |
+| PUT | `/tours` | Record a headcount for a tour in that school |
+
+Gate:
+
+```json
+{ "name": "Main gate" }
+```
+
+Class. `division` may be empty.
+
+```json
+{ "name": "4", "division": "A" }
+```
+
+Tour. `tripDate` is a date such as `2026-10-17`. Status starts as `PLANNED`.
+
+```json
+{ "name": "Science museum", "tripDate": "2026-10-17" }
+```
+
+Headcount. `PUT /tours` with:
+
+```json
+{ "tourId": "TOUR_ID", "presentCount": 28, "note": "Two students absent at the gate" }
+```
+
+`presentCount` is a whole number, zero or greater. A tour from another school returns `404`.
+
+## Companies
+
+Platform admin creates a company and its first admin. A company admin can read their own company. Employees are not students.
+
+| Method | Path | Who | Purpose |
+| --- | --- | --- | --- |
+| GET | `/companies` | Platform or company admin | All companies, or the caller’s company |
+| POST | `/companies` | Platform admin | Create the company and a `COMPANY_ADMIN` user |
+| PATCH | `/companies/:id` | Platform admin | Body `{ "status" }` is `TRIAL`, `ACTIVE`, or `SUSPENDED` |
+| GET | `/companies/summary` | Company admin | `{ departments, employees, openGaps }` |
+| GET, POST | `/departments` | Platform or company admin | Departments for `companyId` |
+| GET, POST | `/employees` | Platform or company admin | Employees for `companyId` |
+| GET, POST | `/attendance-gaps` | Platform or company admin | Out-of-office gaps for `companyId` |
+
+Create company. The admin password follows the same rule as other passwords. The company code is stored in uppercase. If the user cannot be created, the company row is removed.
+
+```json
+{
+  "name": "Northwind Office",
+  "companyCode": "NW",
+  "address": "Andheri, Mumbai",
+  "contactEmail": "office@northwind.example",
+  "contactPhone": "9000001111",
+  "adminName": "Northwind Admin",
+  "adminEmail": "admin@northwind.example",
+  "adminPassword": "ChangeMe123!"
+}
+```
+
+Department:
+
+```json
+{ "companyId": "COMPANY_ID", "name": "Operations" }
+```
+
+Employee. The department must belong to the same company. Email may be empty.
+
+```json
+{
+  "companyId": "COMPANY_ID",
+  "departmentId": "DEPARTMENT_ID",
+  "employeeCode": "EMP-1",
+  "name": "Meera Shah",
+  "email": "",
+  "phone": ""
+}
+```
+
+Out-of-office gap. `endedAt` must be after `startedAt`. Status starts as `OPEN`.
+
+```json
+{
+  "companyId": "COMPANY_ID",
+  "employeeId": "EMPLOYEE_ID",
+  "startedAt": "2026-10-16T04:30:00.000Z",
+  "endedAt": "2026-10-16T06:00:00.000Z",
+  "reason": "Client visit"
+}
+```
+
+A duplicate company code, department name, or employee code returns `409 CONFLICT`.
+
+## Company attendance
+
+Company admin, platform admin, and the employee login created with a card. Days are calculated in `Asia/Kolkata`. A card reading never marks a student, and a school-bus trip never marks an employee.
+
+| Method | Path | Who | Purpose |
+| --- | --- | --- | --- |
+| GET | `/attendance/board` | Platform or company admin | Rules, gateways, today's presence, and recent gaps |
+| PATCH | `/attendance/policy` | Platform or company admin | Grace period, shift, lunch, review window, field check-in, monitoring policy |
+| POST | `/attendance/gateways` | Platform or company admin | Office gateway. `zone` is `FLOOR`, `MEETING_ROOM`, `CAFETERIA`, `CORRIDOR`, or `OTHER` |
+| POST | `/attendance/detections` | Platform or company admin | Apply one card reading |
+| PATCH | `/employees/:id` | Platform or company admin | Card, work mode, consent, and optional employee login |
+| PATCH | `/attendance/gaps/:id` | Employee, company admin, or platform admin | `DISPUTE`, `APPROVE`, or `REJECT` |
+| GET | `/attendance/me` | Employee | That employee's day, gaps, and readings |
+| POST | `/attendance/field` | Employee or company admin | Phone check-in or check-out with GPS |
+| GET | `/attendance/report` | Platform or company admin | Monthly totals. `format=csv` downloads the payroll file |
+
+Policy. The monitoring policy must be at least 20 characters. Lunch is not personal time unless `lunchCountsAsPersonal` is true.
+
+```json
+{
+  "companyId": "COMPANY_ID",
+  "gracePeriodMinutes": 15,
+  "shiftStart": "09:30",
+  "shiftEnd": "18:30",
+  "lunchStart": "13:00",
+  "lunchEnd": "14:00",
+  "lunchCountsAsPersonal": false,
+  "reviewWindowHours": 48,
+  "fieldCheckInAllowed": true,
+  "monitoringPolicy": "Cards are read only to record office presence. Gaps can be disputed."
+}
+```
+
+Detection. Blank `occurredAt` means now. A `datetime-local` value is read as India time. The first reading of the day is check-in. A later reading past the grace period opens a gap from last-seen to this reading. After shift end plus the grace period, the latest reading is check-out.
+
+```json
+{
+  "companyId": "COMPANY_ID",
+  "gatewayId": "GATEWAY_ID",
+  "tagIdentifier": "CARD-1001",
+  "occurredAt": "2026-10-16T09:05"
+}
+```
+
+The employee must have consent. Otherwise the call returns `403 CONSENT_REQUIRED`. An unknown card returns `404 TAG_UNKNOWN`.
+
+Employee card:
+
+```json
+{
+  "companyId": "COMPANY_ID",
+  "tagIdentifier": "CARD-1001",
+  "workMode": "OFFICE",
+  "consentGranted": true,
+  "loginEmail": "meera.shah@northwind.example",
+  "loginPassword": "ChangeMe123!"
+}
+```
+
+`workMode` is `OFFICE` or `FIELD`. Leave the password empty to skip creating a login.
+
+Dispute, approve, or reject:
+
+```json
+{ "action": "DISPUTE", "reason": "Client meeting at Andheri" }
+```
+
+An employee can dispute only their own open gap. Approve marks the gap on duty. Reject marks it personal time. An open personal gap is deducted only after `reviewDeadline`.
+
+Field check-in. Allowed only when the company policy permits it and the employee is field staff.
+
+```json
+{ "action": "IN", "latitude": 19.076, "longitude": 72.877 }
+```
+
+`action` `OUT` checks out. Report query: `month=2026-10`. Working hours run from check-in to check-out, minus personal gaps that have been rejected or have passed the review window.
+
+## Fleets
+
+Platform admin creates a fleet and its first admin. A fleet admin can read their own fleet. Trucks and fleet trips are not school buses or school trips.
+
+| Method | Path | Who | Purpose |
+| --- | --- | --- | --- |
+| GET | `/fleets` | Platform or fleet admin | All fleets, or the caller’s fleet |
+| POST | `/fleets` | Platform admin | Create the fleet and a `FLEET_ADMIN` user |
+| PATCH | `/fleets/:id` | Platform admin | Body `{ "status" }` is `TRIAL`, `ACTIVE`, or `SUSPENDED` |
+| GET | `/fleets/summary` | Fleet admin | `{ trucks, activeTrips }` |
+| GET, POST | `/trucks` | Platform or fleet admin | Trucks for `fleetId`, each with `imei` |
+| GET, POST | `/fleet-geofences` | Platform or fleet admin | Depots and customer sites |
+| GET, POST | `/fleet-trips` | Platform or fleet admin | Planned trips for `fleetId` |
+
+Create fleet. If the admin user cannot be created, the fleet row is removed.
+
+```json
+{
+  "name": "Westline Logistics",
+  "fleetCode": "WL",
+  "address": "Bhiwandi",
+  "contactEmail": "office@westline.example",
+  "contactPhone": "9000002222",
+  "adminName": "Westline Admin",
+  "adminEmail": "admin@westline.example",
+  "adminPassword": "ChangeMe123!"
+}
+```
+
+Truck. The registration is stored in uppercase. The IMEI is unique. If the tracker cannot be saved, the truck row is removed.
+
+```json
+{ "fleetId": "FLEET_ID", "registrationNumber": "MH04AB1234", "imei": "860000000000001" }
+```
+
+Place. `kind` is `DEPOT` or `CUSTOMER`.
+
+```json
+{ "fleetId": "FLEET_ID", "name": "Bhiwandi depot", "kind": "DEPOT", "address": "Bhiwandi" }
+```
+
+Fleet trip. The truck must belong to the same fleet. Status starts as `PLANNED`.
+
+```json
+{
+  "fleetId": "FLEET_ID",
+  "truckId": "TRUCK_ID",
+  "origin": "Bhiwandi depot",
+  "destination": "Pune warehouse"
+}
+```
+
+A duplicate fleet code, registration number, or IMEI returns `409 CONFLICT`.
 
 ## Devices and jobs
 

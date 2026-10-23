@@ -3,6 +3,9 @@ import mongoose, { type Model, type Schema } from "mongoose";
 /* eslint-disable @typescript-eslint/no-explicit-any -- Mongoose 9 model unions are not safely callable without a loose model type. */
 export function registerModel(name: string, schema: Schema): Model<any> {
   const models = mongoose.models as unknown as Record<string, Model<any>>;
+  if (models[name] && process.env.NODE_ENV !== "production") {
+    mongoose.deleteModel(name);
+  }
   if (models[name]) return models[name];
   return mongoose.model(name, schema) as unknown as Model<any>;
 }

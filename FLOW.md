@@ -1,16 +1,18 @@
-# School transport flow
+# Operations flow
 
-One path, in order. Seed data is already in place, so you can follow it on `http://localhost:3000`.
+Three paths in one console. School, company, and transport each keep their own records. A student is never an employee, and a school-bus trip is never a truck trip.
 
-Password for every demo account: `ChangeMe123!`
+Seed data covers the school path. Company and fleet accounts are created in the console. Password for every demo account, and the password you should use when creating a company or fleet admin: `ChangeMe123!`
 
 | Who | Email | What they do |
 | --- | --- | --- |
 | School admin | `schooladmin@abc.school` | Runs one school. Students are saved to that school with no school dropdown. |
-| Platform admin | `admin@schooltransport.local` | Adds schools, then picks a school before working on its people and students. |
-| Driver | `driver@abc.school` | Starts the trip and sends GPS through the mobile API. |
+| Platform admin | `admin@schooltransport.local` | Adds schools, companies, and fleets, then works inside the one they select. |
+| Driver | `driver@abc.school` | Starts the school-bus trip and sends GPS through the mobile API. |
 | Attendant | `attendant@abc.school` | Confirms boarding and drop-off through the mobile API. |
 | Parent | `parent@abc.school` | Sees their child, alerts, and live location through the mobile API. |
+| Company admin | Created with the company | Runs one company: departments, employees, and out-of-office gaps. |
+| Fleet admin | Created with the fleet | Runs one fleet: trucks, places, and planned truck trips. |
 
 The admin console is in this app. Driver and parent screens are not. They call the same `/api/v1` API. Request and response details are in [API.md](API.md).
 
@@ -42,16 +44,20 @@ A school admin can open **Schools** and see their own school. They cannot create
 Walk the sidebar in this order. Each step depends on the one before it. A platform admin must have a school selected in the header first.
 
 1. **People** — parents, drivers, attendants, and school admins for that school.
-2. **Students** — each student is stored with that school’s `schoolId`.
+2. **Classes** — class and division for the student form. This list belongs to the school. It is not a company department.
+3. **Students** — each student is stored with that school’s `schoolId`.
    - School admin: there is no school dropdown. The student is saved to their school.
    - Platform admin: choose the school in the student form. **Add student** stays off until a school is selected. The list and guardians switch to that school.
-3. **BLE cards** — assign a card to a student. A card read later identifies that student.
-4. **Vehicles** — bus or van, with the driver and attendant who may run it.
-5. **Stops** — place the stop with the map pin, then confirm it. Do not type latitude and longitude.
-6. **Routes** — direction `PICKUP` or `DROP`, vehicle, ordered stops, and `HH:mm` times.
-7. **Assignments** — which student rides which route and stop. This is what puts them on a trip roster.
-8. **Trips** — empty until a driver starts one.
-9. **Alerts** — empty until a trip event creates a notification.
+4. **BLE cards** — assign a card to a student. Change the student or the status on any card, including an inactive one. A card read later identifies that student only while the card is active. Gate and tour checks use this same card.
+5. **Gates** — name each entrance, such as Main gate. A later gate read uses two nodes: outside, then inside, means entry. The console stores the gate. It does not decide direction yet.
+6. **Vehicles** — bus or van, with the driver and attendant who may run it.
+7. **Student mapping** — choose that vehicle and the students who ride it. A student is listed on one vehicle.
+8. **Stops** — place the stop with the map pin, then confirm it. Do not type latitude and longitude.
+9. **Routes** — direction `PICKUP` or `DROP`, vehicle, ordered stops, and `HH:mm` times.
+10. **Assignments** — which student rides which route and stop. This is what puts them on a trip roster.
+11. **Trips** — empty until a driver starts one. These are daily school-bus trips.
+12. **Tours** — a picnic or outing on a date, then a headcount. A tour is not a daily bus trip.
+13. **Alerts** — empty until a trip event creates a notification.
 
 Seeded records for ABC Public School:
 
@@ -106,3 +112,56 @@ The seed has the morning route only. Add the return route, its stops, and Aarav�
 1. End the trip while Aarav is still boarded. Expect `CHILD_STILL_ON_BUS` and no ended trip.
 2. Drop Aarav at a stop that is not Gokul Nagar without an override reason. Expect a rejection. With a reason, the drop is stored and audited as the wrong stop.
 3. Send a card read and look at the roster before anyone confirms. The state stays **detected**, not boarded.
+
+## 9. School gates, classes, and tours
+
+Stay signed in as the school admin, or as the platform admin with **ABC Public School** selected. The header school selector stays on school screens and is hidden on company and fleet screens.
+
+1. Open **Classes**. Add class `4` and division `A`. The row is stored on the school.
+2. Open **Gates**. Add `Main gate`.
+3. Open **Tours**. Add a tour name and date, for example `Science museum` on tomorrow’s date.
+4. On the same page, choose that tour, enter how many students are present, and an optional note. Click **Record headcount**.
+5. The headcount list shows the tour name, the count, and the note. A missing student on a tour is a later alert. This screen only stores the count you enter.
+
+## 10. Company attendance
+
+Company records never appear on **Students**, **Vehicles**, or **Trips**.
+
+1. Sign in as the platform admin. Open **Companies**. The school selector is hidden on this screen.
+2. Enter the company name, code, address, contact email, and phone.
+3. Enter the company admin’s name, email, and password. The password needs at least 8 characters, a letter, and a number.
+4. Click **Create company**. The company appears as `TRIAL`, and that admin can sign in. If the admin email or company code is already used, nothing is saved.
+5. Change status in the list to `ACTIVE` or `SUSPENDED`. A suspended company cannot sign in.
+6. Open **Employees** and select that company.
+7. Add a department first. The employee form cannot be saved without one.
+8. Add an employee: department, employee code, and name. Email and phone are optional. The employee is stored on the company, not as a student.
+9. Log an out-of-office gap for that employee. The end time must be after the start time. The row stays `OPEN` until the review window passes. Lunch inside the company lunch hours is not personal time unless the rules say so.
+10. Sign out and sign in with the company admin email. **Overview** shows department, employee, and open-gap counts for that company only. **Companies** lists only their company. **Employees** has no company dropdown.
+
+## 11. Truck fleet
+
+Fleet records never appear on school buses or company employees. A truck uses a GPS tracker. It does not use a BLE card.
+
+1. Sign in as the platform admin. Open **Fleets**.
+2. Enter the fleet name, code, address, contact email, phone, and the fleet admin’s name, email, and password.
+3. Click **Create fleet**. The fleet appears as `TRIAL`. A duplicate fleet code or admin email saves nothing.
+4. Set status to `ACTIVE` or `SUSPENDED`. A suspended fleet cannot sign in.
+5. Open **Trucks** and select that fleet.
+6. Add the vehicle number and tracker IMEI together. If the IMEI is already used, the truck is not kept.
+7. Add a place: `Depot` or `Customer site`, with a name and optional address.
+8. Plan a trip: choose the truck, then origin and destination. The trip is stored as `PLANNED`. It does not start a school-bus trip, and it does not put students on a roster.
+9. Sign in as the fleet admin. **Overview** shows truck and active-trip counts for that fleet only. **Trucks** has no fleet dropdown. A planned trip stays `PLANNED` until a later tracker feed marks it active.
+
+## 12. Company attendance day
+
+Stay signed in as the company admin. Open **Attendance**.
+
+1. Set the grace period, shift, lunch, and review window. Write the monitoring policy. Save the rules. Attendance readings are refused until this policy is saved.
+2. Add office gateways for the floor, meeting rooms, cafeteria, and corridors you have actually surveyed. A dead zone will look like personal time.
+3. Open **Employees**. On **Save card and consent**, assign a card id, mark office or field, and tick written consent. Optionally set a login email and password so the employee can open **My day**.
+4. Back on **Attendance**, record a detection: gateway, card id, and time. The first reading of the day is check-in and the employee shows **In office**.
+5. Record another reading more than the grace period later. The time from the last reading to this one is an out-of-office gap, status **In review**. It is not personal time yet.
+6. The employee signs in, opens **My day**, and disputes that gap with a reason. It becomes **Disputed** and is still not deducted.
+7. The company admin approves or rejects it. Approved time stays on duty. Rejected time becomes personal time. An open gap that nobody reviews becomes personal time only after the review window.
+8. After the shift end plus the grace period, the last card reading is check-out. **Load report** shows working hours, personal hours, pending review, late arrivals, and early exits. **Download CSV** is the payroll export.
+9. Field staff, when phone check-in is allowed and their work mode is Field, check in and out from **My day** with latitude and longitude. That path does not use a gateway.

@@ -86,6 +86,9 @@ async function assertSchoolAvailable(schoolId: string | null, role: Role) {
 function toAuthUser(user: {
   _id: unknown;
   schoolId?: unknown;
+  companyId?: unknown;
+  fleetId?: unknown;
+  employeeId?: unknown;
   name: string;
   email: string;
   phone: string;
@@ -95,10 +98,41 @@ function toAuthUser(user: {
   return {
     id: String(user._id),
     schoolId: user.schoolId ? String(user.schoolId) : null,
+    companyId: user.companyId ? String(user.companyId) : null,
+    fleetId: user.fleetId ? String(user.fleetId) : null,
+    employeeId: user.employeeId ? String(user.employeeId) : null,
     name: user.name,
     email: user.email,
     phone: user.phone,
     role: user.role as Role,
     status: user.status as AuthUser["status"],
   };
+}
+
+export function requireCompanyId(user: AuthUser, requested?: string | null) {
+  if (user.role === ROLES.PLATFORM_ADMIN) {
+    if (!requested) throw new AppError(400, "COMPANY_REQUIRED", "Choose a company before continuing.");
+    return requested;
+  }
+  if ((user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.EMPLOYEE) || !user.companyId) {
+    throw new AppError(403, "FORBIDDEN", "This account cannot access company records.");
+  }
+  if (requested && requested !== user.companyId) {
+    throw new AppError(403, "TENANT_MISMATCH", "You cannot access another company's data.");
+  }
+  return user.companyId;
+}
+
+export function requireFleetId(user: AuthUser, requested?: string | null) {
+  if (user.role === ROLES.PLATFORM_ADMIN) {
+    if (!requested) throw new AppError(400, "FLEET_REQUIRED", "Choose a transport fleet before continuing.");
+    return requested;
+  }
+  if (user.role !== ROLES.FLEET_ADMIN || !user.fleetId) {
+    throw new AppError(403, "FORBIDDEN", "This account cannot access transport records.");
+  }
+  if (requested && requested !== user.fleetId) {
+    throw new AppError(403, "TENANT_MISMATCH", "You cannot access another fleet's data.");
+  }
+  return user.fleetId;
 }

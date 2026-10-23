@@ -1,7 +1,7 @@
 import { apiHandler, readJson, readQuery } from "@/lib/api/handler";
 import { ok } from "@/lib/api/http";
 import { listQuerySchema } from "@/lib/validation/common";
-import { updateStop, updateStopSchema } from "@/modules/fleet/fleet.service";
+import { deleteStop, updateStop, updateStopSchema } from "@/modules/fleet/fleet.service";
 import { ROLES } from "@/types/domain";
 
 export const runtime = "nodejs";
@@ -11,4 +11,9 @@ export const PATCH = apiHandler(async ({ req, user, params }) => {
   const query = readQuery(req, listQuerySchema);
   const input = await readJson(req, updateStopSchema);
   return ok(await updateStop(user, params.id, { ...input, schoolId: input.schoolId || query.schoolId }));
+}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.SCHOOL_ADMIN] });
+
+export const DELETE = apiHandler(async ({ req, user, params }) => {
+  const query = readQuery(req, listQuerySchema);
+  return ok(await deleteStop(user, params.id, query.schoolId));
 }, { roles: [ROLES.PLATFORM_ADMIN, ROLES.SCHOOL_ADMIN] });

@@ -9,6 +9,7 @@ const vehicleSchema = new Schema(
     capacity: { type: Number, required: true, min: 1 },
     driverIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     attendantIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    studentIds: [{ type: Schema.Types.ObjectId, ref: "Student" }],
     status: { type: String, enum: ["ACTIVE", "MAINTENANCE", "INACTIVE"], default: "ACTIVE" },
   },
   { timestamps: true },

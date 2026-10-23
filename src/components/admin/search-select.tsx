@@ -13,7 +13,10 @@ export function SearchSelect({
   anotherPlaceholder,
   emptyMatch,
   emptyOptions,
+  initialIds = [],
   max = 12,
+  single = false,
+  onChange,
 }: {
   label: string;
   name: string;
@@ -22,14 +25,28 @@ export function SearchSelect({
   anotherPlaceholder: string;
   emptyMatch: string;
   emptyOptions: string;
+  initialIds?: string[];
   max?: number;
+  single?: boolean;
+  onChange?: (ids: string[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialIds);
   const [activeIndex, setActiveIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const notify = useRef(onChange);
+  const mounted = useRef(false);
+  notify.current = onChange;
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    notify.current?.(selectedIds);
+  }, [selectedIds]);
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -51,10 +68,13 @@ export function SearchSelect({
   }, [options, query, selectedIds]);
 
   function addOption(id: string) {
-    setSelectedIds((current) => (current.includes(id) || current.length >= max ? current : [...current, id]));
+    setSelectedIds((current) => {
+      if (single) return [id];
+      return current.includes(id) || current.length >= max ? current : [...current, id];
+    });
     setQuery("");
     setActiveIndex(0);
-    setOpen(true);
+    setOpen(!single);
   }
 
   function removeOption(id: string) {
@@ -64,20 +84,6 @@ export function SearchSelect({
   return (
     <div ref={rootRef} className="relative">
       <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {selected.length ? (
-        <div className="mb-2 flex flex-wrap gap-1">
-          {selected.map((person) => (
-            <button
-              key={person.id}
-              type="button"
-              className="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-900"
-              onClick={() => removeOption(person.id)}
-            >
-              {person.name} ×
-            </button>
-          ))}
-        </div>
-      ) : null}
       <input
         className={controlClass}
         role="combobox"
@@ -109,17 +115,31 @@ export function SearchSelect({
           }
         }}
       />
+      {selected.length ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {selected.map((person) => (
+            <button
+              key={person.id}
+              type="button"
+              className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-900 transition hover:bg-teal-100"
+              onClick={() => removeOption(person.id)}
+            >
+              {person.name} ×
+            </button>
+          ))}
+        </div>
+      ) : null}
       {selectedIds.map((id) => (
         <input key={id} type="hidden" name={name} value={id} />
       ))}
       {open ? (
-        <ul id={listId} role="listbox" className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+        <ul id={listId} role="listbox" className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
           {matches.length ? (
             matches.map((person, index) => (
               <li key={person.id} role="option" aria-selected={index === activeIndex}>
                 <button
                   type="button"
-                  className={`w-full px-3 py-2 text-left text-sm ${index === activeIndex ? "bg-teal-50" : "hover:bg-slate-50"}`}
+                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${index === activeIndex ? "bg-teal-50" : "hover:bg-slate-50"}`}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     addOption(person.id);

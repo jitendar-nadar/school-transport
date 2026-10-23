@@ -5,3 +5,8 @@ import "@/models/ble-tag";
 import "@/models/fleet";
 import "@/models/trip";
 import "@/models/ops";
+import "@/models/company";
+import "@/models/attendance";
+import "@/models/carrier";
+import "@/models/school-records";
+import "@/models/platform-events";

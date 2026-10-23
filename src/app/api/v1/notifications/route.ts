@@ -11,6 +11,6 @@ export const dynamic = "force-dynamic";
 export const GET = apiHandler(async ({ req, user }) => {
   const query = readQuery(req, listQuerySchema);
   const schoolId = requireSchoolId(user, query.schoolId);
-  const result = await adminNotifications(schoolId, query.page, query.limit);
+  const result = await adminNotifications(schoolId, query.page, query.limit, query.search);
   return ok(result.items, result.meta);
 }, { roles: [ROLES.PLATFORM_ADMIN, ROLES.SCHOOL_ADMIN] });

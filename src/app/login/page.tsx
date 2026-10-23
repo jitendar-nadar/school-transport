@@ -2,6 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PrimaryButton, controlClass } from "@/components/admin/ui";
 
 const demoAccounts =
   process.env.NODE_ENV === "development"
@@ -42,8 +43,8 @@ function LoginForm() {
       setError(body.error?.message || "Sign in failed.");
       return;
     }
-    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN"].includes(body.data.user.role)) {
-      setError("This console is for school and platform administrators. Drivers and parents use the mobile apps.");
+    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "EMPLOYEE"].includes(body.data.user.role)) {
+      setError("This console is for administrators. Drivers, attendants, and parents use the mobile apps.");
       await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
       return;
     }
@@ -52,15 +53,15 @@ function LoginForm() {
   }
 
   return (
-    <form className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <p className="text-xs uppercase tracking-[0.16em] text-teal-800">School transport</p>
-      <h1 className="mt-2 text-2xl font-semibold">Admin sign in</h1>
-      <p className="mt-1 text-sm text-slate-600">Manage schools, students, routes, and live trips.</p>
+    <form className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_16px_40px_rgba(16,35,63,0.08)]" onSubmit={onSubmit}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-teal-800">Tracking platform</p>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Admin sign in</h1>
+      <p className="mt-1 text-sm leading-6 text-slate-500">Manage a school, a company, or a transport fleet.</p>
       {params.get("denied") ? <p className="mt-4 text-sm text-red-700">Use an administrator account for this console.</p> : null}
-      <label className="mt-5 block text-sm font-medium">
+      <label className="mt-6 block text-sm font-medium text-slate-700">
         Email
         <input
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className={`${controlClass} mt-1`}
           name="email"
           type="email"
           autoComplete="username"
@@ -69,10 +70,10 @@ function LoginForm() {
           required
         />
       </label>
-      <label className="mt-3 block text-sm font-medium">
+      <label className="mt-3 block text-sm font-medium text-slate-700">
         Password
         <input
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+          className={`${controlClass} mt-1`}
           name="password"
           type="password"
           autoComplete="current-password"
@@ -83,12 +84,12 @@ function LoginForm() {
       </label>
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
       {demoAccounts.length ? (
-        <div className="mt-4 space-y-2">
+        <div className="mt-5 space-y-2">
           <p className="text-xs text-slate-500">Seeded accounts for this local database</p>
           {demoAccounts.map((account) => (
             <button
               key={account.email}
-              className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+              className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm transition hover:border-slate-300 hover:bg-slate-50"
               type="button"
               onClick={() => {
                 setEmail(account.email);
@@ -102,9 +103,9 @@ function LoginForm() {
           ))}
         </div>
       ) : null}
-      <button className="mt-5 w-full rounded-lg bg-teal-800 py-2.5 font-medium text-white" disabled={pending} type="submit">
+      <PrimaryButton className="mt-6 w-full py-2.5" disabled={pending}>
         {pending ? "Signing in..." : "Sign in"}
-      </button>
+      </PrimaryButton>
     </form>
   );
 }

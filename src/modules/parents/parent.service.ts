@@ -119,8 +119,9 @@ export async function parentLiveAccess(user: AuthUser, input: z.infer<typeof liv
   };
 }
 
-export async function adminNotifications(schoolId: string, page: number, limit: number) {
-  return listNotifications({ schoolId }, page, limit);
+export async function adminNotifications(schoolId: string, page: number, limit: number, search?: string) {
+  const { searchClause } = await import("@/utils/serialize");
+  return listNotifications({ schoolId, ...searchClause(["title", "body", "type"], search) }, page, limit);
 }
 
 export async function listAudit(schoolId: string | Record<string, unknown>, page: number, limit: number) {

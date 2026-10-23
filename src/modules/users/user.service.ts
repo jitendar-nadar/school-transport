@@ -3,6 +3,8 @@ import { requireSchoolId } from "@/lib/auth/guard";
 import { hashPassword } from "@/lib/auth/tokens";
 import { AppError, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
+import { Vehicle } from "@/models/fleet";
+import { Trip } from "@/models/trip";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser, Role } from "@/types/domain";
@@ -56,7 +58,11 @@ export async function listUsers(
   if (query.status) filter.status = query.status;
   if (query.search) {
     const pattern = escapeRegex(query.search);
-    filter.$or = [{ name: { $regex: pattern, $options: "i" } }, { email: { $regex: pattern, $options: "i" } }];
+    filter.$or = [
+      { name: { $regex: pattern, $options: "i" } },
+      { email: { $regex: pattern, $options: "i" } },
+      { phone: { $regex: pattern, $options: "i" } },
+    ];
   }
   const result = await paginate(User, filter, { page: query.page, limit: query.limit, sort: { name: 1 } });
   return { items: result.items.map((item) => serialize(item)), meta: result.meta };
@@ -117,6 +123,27 @@ export async function updateUser(actor: AuthUser, id: string, input: z.infer<typ
     after: { role: user.role, status: user.status },
   });
   return serialize(user.toObject());
+}
+
+export async function deleteUser(actor: AuthUser, id: string) {
+  const user = await User.findById(id);
+  if (!user) throw notFound("User");
+  assertUserAccess(actor, user);
+  if (actor.id === String(user._id)) throw new AppError(403, "FORBIDDEN", "You cannot delete your own account.");
+  const active = await Trip.findOne({ status: "ACTIVE", $or: [{ driverId: user._id }, { attendantId: user._id }] }).select("_id");
+  if (active) throw new AppError(409, "IN_USE", "This person is on an active trip. End that trip before deleting them.");
+  await Vehicle.updateMany({ driverIds: user._id }, { $pull: { driverIds: user._id } });
+  await Vehicle.updateMany({ attendantIds: user._id }, { $pull: { attendantIds: user._id } });
+  await user.deleteOne();
+  await writeAudit({
+    schoolId: user.schoolId ? String(user.schoolId) : null,
+    actorId: actor.id,
+    action: "USER_DELETED",
+    entityType: "User",
+    entityId: id,
+    after: { email: user.email },
+  });
+  return { deleted: true };
 }
 
 function schoolFilter(user: AuthUser, requested?: string) {

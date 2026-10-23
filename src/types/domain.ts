@@ -4,6 +4,9 @@ export const ROLES = {
   DRIVER: "DRIVER",
   ATTENDANT: "ATTENDANT",
   PARENT: "PARENT",
+  COMPANY_ADMIN: "COMPANY_ADMIN",
+  FLEET_ADMIN: "FLEET_ADMIN",
+  EMPLOYEE: "EMPLOYEE",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -46,6 +49,9 @@ export type VerificationMethod = (typeof VERIFICATION_METHODS)[number];
 export type AuthUser = {
   id: string;
   schoolId: string | null;
+  companyId: string | null;
+  fleetId: string | null;
+  employeeId: string | null;
   name: string;
   email: string;
   phone: string;

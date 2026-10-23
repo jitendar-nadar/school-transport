@@ -27,6 +27,9 @@ export const refreshSchema = z.object({
 function publicUser(user: {
   _id: unknown;
   schoolId?: unknown;
+  companyId?: unknown;
+  fleetId?: unknown;
+  employeeId?: unknown;
   name: string;
   email: string;
   phone: string;
@@ -36,6 +39,9 @@ function publicUser(user: {
   return {
     id: String(user._id),
     schoolId: user.schoolId ? String(user.schoolId) : null,
+    companyId: user.companyId ? String(user.companyId) : null,
+    fleetId: user.fleetId ? String(user.fleetId) : null,
+    employeeId: user.employeeId ? String(user.employeeId) : null,
     name: user.name,
     email: user.email,
     phone: user.phone,
@@ -44,11 +50,26 @@ function publicUser(user: {
   };
 }
 
-async function assertCanSignIn(user: { role: string; schoolId?: unknown; status: string }) {
+async function assertCanSignIn(user: { role: string; schoolId?: unknown; companyId?: unknown; fleetId?: unknown; status: string }) {
   if (user.status !== "ACTIVE") {
     throw new AppError(403, "ACCOUNT_DISABLED", "This account is disabled.");
   }
-  if (!user.schoolId || user.role === ROLES.PLATFORM_ADMIN) return;
+  if (user.role === ROLES.PLATFORM_ADMIN) return;
+  if (user.role === ROLES.COMPANY_ADMIN || user.role === ROLES.EMPLOYEE) {
+    const { Company } = await import("@/models/company");
+    const company = await Company.findById(user.companyId).select("status").lean();
+    if (!company) throw new AppError(403, "COMPANY_MISSING", "This company no longer exists.");
+    if (company.status === "SUSPENDED") throw new AppError(403, "COMPANY_SUSPENDED", "This company is suspended.");
+    return;
+  }
+  if (user.role === ROLES.FLEET_ADMIN) {
+    const { FleetAccount } = await import("@/models/carrier");
+    const fleet = await FleetAccount.findById(user.fleetId).select("status").lean();
+    if (!fleet) throw new AppError(403, "FLEET_MISSING", "This fleet no longer exists.");
+    if (fleet.status === "SUSPENDED") throw new AppError(403, "FLEET_SUSPENDED", "This fleet is suspended.");
+    return;
+  }
+  if (!user.schoolId) return;
   const school = await School.findById(user.schoolId).select("status").lean();
   if (!school) throw new AppError(403, "SCHOOL_MISSING", "This school no longer exists.");
   if (school.status === "SUSPENDED") {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { DataTable, PageHeader, Panel } from "@/components/admin/ui";
-import { useRecords } from "@/components/admin/use-records";
+import { listControls, usePagedRecords } from "@/components/admin/use-records";
 
 type Trip = {
   id: string;
@@ -17,12 +17,13 @@ type Trip = {
 };
 
 export default function TripsPage() {
-  const trips = useRecords<Trip>("/api/v1/trips?limit=50");
+  const trips = usePagedRecords<Trip>("/api/v1/trips");
   return (
     <div className="space-y-5">
       <PageHeader title="Trips" subtitle="Each trip keeps its own student roster, so later route changes do not alter history." />
       <Panel>
         <DataTable
+          {...listControls(trips)}
           columns={["Date", "Vehicle", "Route", "Direction", "Progress", "Status", ""]}
           rows={trips.rows.map((trip) => [
             trip.scheduledDate,

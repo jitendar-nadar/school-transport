@@ -9,7 +9,7 @@ const schema = new Schema(
     studentId: { type: Schema.Types.ObjectId, ref: "Student", default: null },
     tagType: { type: String, default: "CARD" },
     batteryStatus: { type: String, enum: ["UNKNOWN", "GOOD", "LOW", "REPLACE"], default: "UNKNOWN" },
-    status: { type: String, enum: ["UNASSIGNED", "ACTIVE", "LOST", "RETIRED"], default: "UNASSIGNED" },
+    status: { type: String, enum: ["UNASSIGNED", "ACTIVE", "INACTIVE", "LOST", "RETIRED"], default: "UNASSIGNED" },
     assignedAt: { type: Date, default: null },
   },
   { timestamps: true },

@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
 import { useScope } from "@/components/admin/shell";
-import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClass } from "@/components/admin/ui";
-import { useRecords } from "@/components/admin/use-records";
+import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
+import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
 type Student = {
@@ -14,22 +14,31 @@ type Student = {
   className: string;
   division: string;
   status: string;
+  parentIds?: Array<{ id?: string } | string>;
   schoolId?: string;
   schoolName?: string;
   schoolCode?: string;
   parentConsent?: { granted?: boolean };
 };
 type Person = { id: string; name: string; email?: string; role: string };
+type SchoolClass = { id: string; name: string; division: string };
 
 export default function StudentsPage() {
   const { user, schoolId, schools, setSchoolId } = useScope();
   const isPlatformAdmin = user.role === "PLATFORM_ADMIN";
-  const students = useRecords<Student>("/api/v1/students?limit=100");
+  const students = usePagedRecords<Student>("/api/v1/students");
   const parents = useRecords<Person>("/api/v1/users?limit=100&role=PARENT");
+  const classes = useRecords<SchoolClass>("/api/v1/classes?limit=100");
   const [chosenSchoolId, setChosenSchoolId] = useState(schoolId || "");
   const [message, setMessage] = useState("");
   const [formVersion, setFormVersion] = useState(0);
+  const [className, setClassName] = useState("");
+  const [editing, setEditing] = useState<Student | null>(null);
   const guardians = parents.rows.filter((person) => person.role === "PARENT");
+  const classOptions = [...new Set(classes.rows.map((item) => item.name))].sort().map((name) => ({ id: name, name }));
+  const divisionOptions = [...new Set(
+    classes.rows.filter((item) => item.name === className && item.division).map((item) => item.division),
+  )].sort().map((division) => ({ id: division, name: division }));
 
   useEffect(() => {
     if (schoolId) setChosenSchoolId(schoolId);
@@ -50,25 +59,48 @@ export default function StudentsPage() {
       return;
     }
     const parentIds = form.getAll("parentIds").map(String).filter(Boolean);
+    const selectedClass = String(form.get("className") || "");
+    if (!selectedClass) {
+      setMessage("Choose a class.");
+      return;
+    }
+    const body = {
+      schoolId: selectedSchoolId,
+      name: form.get("name"),
+      studentCode: form.get("studentCode"),
+      className: form.get("className"),
+      division: form.get("division"),
+      parentIds,
+      parentConsent: { granted: form.get("consent") === "on" },
+    };
     try {
-      await api("/api/v1/students", {
-        method: "POST",
-        body: {
-          schoolId: selectedSchoolId,
-          name: form.get("name"),
-          studentCode: form.get("studentCode"),
-          className: form.get("className"),
-          division: form.get("division"),
-          parentIds,
-          parentConsent: { granted: form.get("consent") === "on" },
-        },
+      await api(editing ? `/api/v1/students/${editing.id}` : "/api/v1/students", {
+        method: editing ? "PATCH" : "POST",
+        body,
       });
       formElement.reset();
+      setEditing(null);
+      setClassName("");
       setFormVersion((version) => version + 1);
       setMessage("Student saved.");
       await students.reload();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "Could not save the student.");
+    }
+  }
+
+  async function removeStudent(student: Student) {
+    if (!window.confirm(`Delete ${student.name}?`)) return;
+    try {
+      await api(`/api/v1/students/${student.id}`, { method: "DELETE" });
+      if (editing?.id === student.id) {
+        setEditing(null);
+        setClassName("");
+      }
+      setMessage("Student deleted.");
+      await students.reload();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Could not delete the student.");
     }
   }
 
@@ -82,9 +114,9 @@ export default function StudentsPage() {
       />
       {isPlatformAdmin && !chosenSchoolId ? <Notice>Select a school before adding a student.</Notice> : null}
       {students.error ? <Notice>{students.error}</Notice> : null}
-      {message ? <Notice tone={message.includes("saved") ? "ok" : "error"}>{message}</Notice> : null}
+      {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
+        <form key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
           {isPlatformAdmin ? (
             <Field label="School">
               <select className={controlClass} name="schoolId" required value={chosenSchoolId} onChange={(event) => chooseSchool(event.target.value)}>
@@ -95,14 +127,40 @@ export default function StudentsPage() {
               </select>
             </Field>
           ) : null}
-          <Field label="Name"><input className={controlClass} name="name" required /></Field>
-          <Field label="Student code"><input className={controlClass} name="studentCode" required /></Field>
-          <Field label="Class"><input className={controlClass} name="className" required /></Field>
-          <Field label="Division"><input className={controlClass} name="division" /></Field>
+          <Field label="Name"><input className={controlClass} name="name" defaultValue={editing?.name || ""} required /></Field>
+          <Field label="Student code"><input className={controlClass} name="studentCode" defaultValue={editing?.studentCode || ""} required /></Field>
           <SearchSelect
-            key={`${chosenSchoolId}-${formVersion}`}
+            key={`class-${chosenSchoolId}-${editing?.id || "new"}-${formVersion}`}
+            label="Class"
+            name="className"
+            initialIds={editing ? [editing.className] : []}
+            options={classOptions}
+            placeholder="Search classes"
+            anotherPlaceholder="Search classes"
+            emptyMatch="No classes match that search."
+            emptyOptions="Add a class on Classes first."
+            single
+            max={1}
+            onChange={(ids) => setClassName(ids[0] || "")}
+          />
+          <SearchSelect
+            key={`division-${chosenSchoolId}-${className}-${editing?.id || "new"}-${formVersion}`}
+            label="Division"
+            name="division"
+            initialIds={editing?.division ? [editing.division] : []}
+            options={divisionOptions}
+            placeholder={className ? "Search divisions" : "Choose a class first"}
+            anotherPlaceholder="Search divisions"
+            emptyMatch="No divisions match that search."
+            emptyOptions={className ? "This class has no divisions." : "Choose a class first."}
+            single
+            max={1}
+          />
+          <SearchSelect
+            key={`${chosenSchoolId}-${editing?.id || "new"}-${formVersion}`}
             label="Guardians"
             name="parentIds"
+            initialIds={(editing?.parentIds || []).map((parent) => typeof parent === "string" ? parent : parent.id || "").filter(Boolean)}
             options={guardians}
             placeholder="Search guardians"
             anotherPlaceholder="Search to add another guardian"
@@ -111,15 +169,19 @@ export default function StudentsPage() {
             max={6}
           />
           <label className="flex items-center gap-2 text-sm md:col-span-3">
-            <input name="consent" type="checkbox" />
+            <input name="consent" type="checkbox" defaultChecked={Boolean(editing?.parentConsent?.granted)} />
             Parent consent granted for transport tracking
           </label>
-          <div><PrimaryButton disabled={isPlatformAdmin && !chosenSchoolId}>Add student</PrimaryButton></div>
+          <div className="flex items-center gap-3">
+            <PrimaryButton disabled={isPlatformAdmin && !chosenSchoolId}>{editing ? "Save changes" : "Add student"}</PrimaryButton>
+            {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => { setEditing(null); setClassName(""); setFormVersion((version) => version + 1); }}>Cancel</button> : null}
+          </div>
         </form>
       </Panel>
       <Panel>
         <DataTable
-          columns={["Student", "Code", "Class", "School", "Consent", "Status"]}
+          {...listControls(students)}
+          columns={["Student", "Code", "Class", "School", "Consent", "Status", ""]}
           rows={students.rows.map((student) => [
             student.name,
             student.studentCode,
@@ -127,6 +189,11 @@ export default function StudentsPage() {
             student.schoolName ? `${student.schoolName}${student.schoolCode ? ` · ${student.schoolCode}` : ""}` : student.schoolId || "",
             student.parentConsent?.granted ? "Granted" : "Missing",
             student.status,
+            <RowActions
+              key={student.id}
+              onEdit={() => { setEditing(student); setClassName(student.className); setMessage(""); }}
+              onDelete={() => { void removeStudent(student); }}
+            />,
           ])}
         />
       </Panel>

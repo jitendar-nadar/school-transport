@@ -23,7 +23,7 @@ import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
 import { objectIdSchema } from "@/lib/validation/common";
 import { distanceMeters, fromPoint, toPoint } from "@/utils/geo";
-import { serialize } from "@/utils/serialize";
+import { escapeRegex, serialize } from "@/utils/serialize";
 import { calendarDate, dayAnchor, formatClock, isHistoricalEvent } from "@/utils/time";
 
 const timestampSchema = z.string().refine((value) => !Number.isNaN(Date.parse(value)), "Invalid timestamp");
@@ -715,7 +715,7 @@ export async function endTrip(user: AuthUser, tripId: string, input: z.infer<typ
   return serialize(trip.toObject());
 }
 
-export async function listTrips(user: AuthUser, query: { page: number; limit: number; status?: string; schoolId?: string }) {
+export async function listTrips(user: AuthUser, query: { page: number; limit: number; status?: string; schoolId?: string; search?: string }) {
   const filter: Record<string, unknown> = {};
   if (user.role === ROLES.PLATFORM_ADMIN || user.role === ROLES.SCHOOL_ADMIN) {
     filter.schoolId = requireSchoolId(user, query.schoolId);
@@ -723,6 +723,17 @@ export async function listTrips(user: AuthUser, query: { page: number; limit: nu
     throw new AppError(403, "FORBIDDEN", "You do not have permission to list trips.");
   }
   if (query.status) filter.status = query.status;
+  if (query.search) {
+    const pattern = escapeRegex(query.search);
+    const vehicles = await Vehicle.find({ schoolId: filter.schoolId, vehicleNumber: { $regex: pattern, $options: "i" } }).select("_id");
+    const routes = await Route.find({ schoolId: filter.schoolId, $or: [{ name: { $regex: pattern, $options: "i" } }, { routeCode: { $regex: pattern, $options: "i" } }] }).select("_id");
+    filter.$or = [
+      { status: { $regex: pattern, $options: "i" } },
+      { direction: { $regex: pattern, $options: "i" } },
+      { vehicleId: { $in: vehicles.map((vehicle) => vehicle._id) } },
+      { routeId: { $in: routes.map((route) => route._id) } },
+    ];
+  }
   const result = await paginate(Trip, filter, {
     page: query.page,
     limit: query.limit,

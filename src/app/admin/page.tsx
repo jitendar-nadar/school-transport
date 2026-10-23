@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useScope } from "@/components/admin/shell";
 import { Badge, PageHeader, Panel } from "@/components/admin/ui";
 import { api } from "@/lib/admin/api";
+import { MyDay } from "@/components/admin/my-day";
 
 type Overview = { students: number; vehicles: number; activeTrips: number; onboardNow: number; safetyAlerts: number };
 type Trip = {
@@ -18,6 +19,70 @@ type Trip = {
 };
 
 export default function OverviewPage() {
+  const { user } = useScope();
+  if (user.role === "COMPANY_ADMIN") return <CompanyHome />;
+  if (user.role === "FLEET_ADMIN") return <FleetHome />;
+  if (user.role === "EMPLOYEE") return <EmployeeHome />;
+  return <SchoolHome />;
+}
+
+function EmployeeHome() {
+  return <MyDay />;
+}
+
+function CompanyHome() {
+  const [summary, setSummary] = useState<{ departments: number; employees: number; openGaps: number } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api<{ departments: number; employees: number; openGaps: number }>("/api/v1/companies/summary", { school: false })
+      .then((result) => setSummary(result.data))
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the company."));
+  }, []);
+  return (
+    <div>
+      <PageHeader title="Company overview" subtitle="Attendance records for this company. School students and bus trips are not included." />
+      {error ? <p className="mb-4 text-sm text-red-700">{error}</p> : null}
+      {summary ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[["Departments", summary.departments], ["Employees", summary.employees], ["Open gaps", summary.openGaps]].map(([label, value]) => (
+            <Panel key={String(label)}>
+              <p className="text-sm text-slate-500">{label}</p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>
+            </Panel>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FleetHome() {
+  const [summary, setSummary] = useState<{ trucks: number; activeTrips: number } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api<{ trucks: number; activeTrips: number }>("/api/v1/fleets/summary", { school: false })
+      .then((result) => setSummary(result.data))
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the fleet."));
+  }, []);
+  return (
+    <div>
+      <PageHeader title="Fleet overview" subtitle="Trucks and fleet trips. These are separate from school buses." />
+      {error ? <p className="mb-4 text-sm text-red-700">{error}</p> : null}
+      {summary ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[["Trucks", summary.trucks], ["Active fleet trips", summary.activeTrips]].map(([label, value]) => (
+            <Panel key={String(label)}>
+              <p className="text-sm text-slate-500">{label}</p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>
+            </Panel>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SchoolHome() {
   const { user, schoolId } = useScope();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -67,7 +132,7 @@ export default function OverviewPage() {
           ].map(([label, value]) => (
             <Panel key={String(label)}>
               <p className="text-sm text-slate-500">{label}</p>
-              <p className="mt-1 text-3xl font-semibold">{value}</p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>
             </Panel>
           ))}
         </div>
@@ -77,7 +142,7 @@ export default function OverviewPage() {
         <div className="space-y-3">
           {trips.length ? (
             trips.map((trip) => (
-              <Link key={trip.id} href={`/admin/trips/${trip.id}`} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3">
+              <Link key={trip.id} href={`/admin/trips/${trip.id}`} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3 transition hover:border-teal-200 hover:bg-slate-50">
                 <div>
                   <p className="font-medium">{trip.vehicleId?.vehicleNumber || "Vehicle"} · {trip.routeId?.name || "Route"}</p>
                   <p className="text-sm text-slate-500">{trip.totalBoarded}/{trip.totalAssignedStudents} boarded</p>

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/utils/geo.test.ts src/modules/trips/state.test.ts",
+    "test": "tsx --test src/utils/geo.test.ts src/modules/trips/state.test.ts src/modules/companies/attendance-rules.test.ts",
     "seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
