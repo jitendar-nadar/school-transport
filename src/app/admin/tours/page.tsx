@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { EMPTY_FIELD_ERRORS } from "@/components/admin/form-error-context";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { useScope } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
@@ -13,6 +15,8 @@ export default function ToursPage() {
   const [tours, setTours] = useState<Tour[]>([]);
   const [headcounts, setHeadcounts] = useState<Headcount[]>([]);
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [errorOwner, setErrorOwner] = useState("");
   const [error, setError] = useState("");
   const [editingTour, setEditingTour] = useState<Tour | null>(null);
   const [editingCount, setEditingCount] = useState<Headcount | null>(null);
@@ -42,6 +46,8 @@ export default function ToursPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
+    setErrorOwner("tour");
+    setFieldErrors({});
     try {
       await api(editingTour ? `/api/v1/tours/${editingTour.id}` : "/api/v1/tours", {
         method: editingTour ? "PATCH" : "POST",
@@ -52,7 +58,10 @@ export default function ToursPage() {
       setMessage("Tour saved.");
       await reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the tour.");
+      const result = failureOf(caught, "Could not save the tour.");
+      setErrorOwner("tour");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -61,6 +70,8 @@ export default function ToursPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
+    setErrorOwner("count");
+    setFieldErrors({});
     try {
       const body = { tourId: form.get("tourId"), presentCount: Number(form.get("presentCount")), note: form.get("note"), schoolId };
       await api(editingCount ? `/api/v1/tours/headcounts/${editingCount.id}` : "/api/v1/tours", {
@@ -72,7 +83,10 @@ export default function ToursPage() {
       setMessage("Headcount saved.");
       await reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the headcount.");
+      const result = failureOf(caught, "Could not save the headcount.");
+      setErrorOwner("count");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -109,14 +123,14 @@ export default function ToursPage() {
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={editingTour?.id || "new-tour"} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-          <Field label="Tour"><input className={controlClass} name="name" defaultValue={editingTour?.name || ""} required /></Field>
+        <ValidatedForm key={editingTour?.id || "new-tour"} className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "tour" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+          <Field label="Tour"><input className={controlClass} name="name" minLength={2} defaultValue={editingTour?.name || ""} required /></Field>
           <Field label="Date"><input className={controlClass} name="tripDate" type="date" defaultValue={editingTour?.tripDate || ""} required /></Field>
           <div className="flex items-end gap-3 md:col-span-3">
             <PrimaryButton>{editingTour ? "Save changes" : "Add tour"}</PrimaryButton>
             {editingTour ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => setEditingTour(null)}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -125,12 +139,12 @@ export default function ToursPage() {
             tour.name,
             tour.tripDate,
             tour.status,
-            <RowActions key={tour.id} onEdit={() => { setEditingTour(tour); setMessage(""); }} onDelete={() => { void removeTour(tour); }} />,
+            <RowActions key={tour.id} onEdit={() => { setEditingTour(tour); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeTour(tour); }} />,
           ])}
         />
       </Panel>
       <Panel>
-        <form key={editingCount?.id || "new-count"} className="grid gap-3 md:grid-cols-3" onSubmit={onHeadcount}>
+        <ValidatedForm key={editingCount?.id || "new-count"} className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "count" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={onHeadcount}>
           <Field label="Tour">
             <select className={controlClass} name="tourId" defaultValue={editingCount?.tourId || ""} required>
               <option value="">Select</option>
@@ -141,9 +155,9 @@ export default function ToursPage() {
           <Field label="Note"><input className={controlClass} name="note" defaultValue={editingCount?.note || ""} /></Field>
           <div className="flex items-end gap-3 md:col-span-3">
             <PrimaryButton>{editingCount ? "Save changes" : "Record headcount"}</PrimaryButton>
-            {editingCount ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => setEditingCount(null)}>Cancel</button> : null}
+            {editingCount ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => { setEditingCount(null); setFieldErrors({}); }}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useFieldError } from "@/components/admin/form-error-context";
 import { controlClass } from "@/components/admin/ui";
 
 type Option = { id: string; name: string; email?: string; detail?: string };
@@ -38,6 +39,8 @@ export function SearchSelect({
   const listId = useId();
   const notify = useRef(onChange);
   const mounted = useRef(false);
+  const error = useFieldError(name);
+  const errorId = useId();
   notify.current = onChange;
 
   useEffect(() => {
@@ -87,6 +90,8 @@ export function SearchSelect({
       <input
         className={controlClass}
         role="combobox"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -129,6 +134,7 @@ export function SearchSelect({
           ))}
         </div>
       ) : null}
+      {error ? <span className="mt-1 block text-sm leading-5 text-red-700" id={errorId}>{error}</span> : null}
       {selectedIds.map((id) => (
         <input key={id} type="hidden" name={name} value={id} />
       ))}

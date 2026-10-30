@@ -12,7 +12,7 @@ Seed data covers the school path. Company and fleet accounts are created in the 
 | Attendant | `attendant@abc.school` | Confirms boarding and drop-off through the mobile API. |
 | Parent | `parent@abc.school` | Sees their child, alerts, and live location through the mobile API. |
 | Company admin | Created with the company | Runs one company: departments, employees, and out-of-office gaps. |
-| Fleet admin | Created with the fleet | Runs one fleet: trucks, places, and planned truck trips. |
+| Fleet admin | Created with the fleet | Runs one fleet: trucks and trackers, places, trips, the live map, and daily reports. |
 
 The admin console is in this app. Driver and parent screens are not. They call the same `/api/v1` API. Request and response details are in [API.md](API.md).
 
@@ -135,22 +135,84 @@ Company records never appear on **Students**, **Vehicles**, or **Trips**.
 6. Open **Employees** and select that company.
 7. Add a department first. The employee form cannot be saved without one.
 8. Add an employee: department, employee code, and name. Email and phone are optional. The employee is stored on the company, not as a student.
-9. Log an out-of-office gap for that employee. The end time must be after the start time. The row stays `OPEN` until the review window passes. Lunch inside the company lunch hours is not personal time unless the rules say so.
+9. Open **Out of office**, select the company, and log a gap for that employee. The end time must be after the start time. The row stays `OPEN` until the review window passes. Lunch inside the company lunch hours is not personal time unless the rules say so.
 10. Sign out and sign in with the company admin email. **Overview** shows department, employee, and open-gap counts for that company only. **Companies** lists only their company. **Employees** has no company dropdown.
 
 ## 11. Truck fleet
 
-Fleet records never appear on school buses or company employees. A truck uses a GPS tracker. It does not use a BLE card.
+Fleet records never appear on school buses or company employees. A truck uses a GPS tracker with a SIM card. It does not use a BLE card. The school-bus GPS path is a different feed: a driver sends location for an active school trip. A truck tracker posts on its own, by IMEI, whether or not a trip is open.
+
+### Set up the fleet
 
 1. Sign in as the platform admin. Open **Fleets**.
 2. Enter the fleet name, code, address, contact email, phone, and the fleet admin’s name, email, and password.
 3. Click **Create fleet**. The fleet appears as `TRIAL`. A duplicate fleet code or admin email saves nothing.
 4. Set status to `ACTIVE` or `SUSPENDED`. A suspended fleet cannot sign in.
-5. Open **Trucks** and select that fleet.
-6. Add the vehicle number and tracker IMEI together. If the IMEI is already used, the truck is not kept.
-7. Add a place: `Depot` or `Customer site`, with a name and optional address.
-8. Plan a trip: choose the truck, then origin and destination. The trip is stored as `PLANNED`. It does not start a school-bus trip, and it does not put students on a roster.
-9. Sign in as the fleet admin. **Overview** shows truck and active-trip counts for that fleet only. **Trucks** has no fleet dropdown. A planned trip stays `PLANNED` until a later tracker feed marks it active.
+5. Open **Trucks** and select that fleet. A fleet admin lands here with no fleet dropdown.
+6. Add the vehicle number, the tracker IMEI, and the tracker standard.
+   - **Standard GPS** is a normal tracker.
+   - **AIS-140** records that this vehicle needs an AIS-140-certified device. The console stores that choice. It does not certify the hardware.
+   - If the IMEI is already used, the truck is not kept.
+7. Add a place. Choose `Depot` or `Customer site`, enter the name and radius, and set the pin the same way as a school stop: search or type the address, then **Confirm location**. **Add place** stays off until the pin is confirmed. A place without a pin cannot raise a geofence alert.
+8. Plan a trip: choose the truck, origin, and destination. The planned route is optional. Search each stop by address or landmark, in travel order, and choose the match. The console stores the map point for that address. A saved place can be added the same way. Two or more stops are the path the truck is expected to follow. The trip is stored as `PLANNED`. It does not start a school-bus trip, and it does not put students on a roster.
+9. Click **Start** on that row when the truck should be on the job. Status becomes `ACTIVE`, and only one trip per truck can be active. Click **Complete** when it is done. Status becomes `COMPLETED` and the end time is stored.
+10. Sign in as the fleet admin. **Overview** shows truck and active-trip counts for that fleet only.
+
+### What the tracker sends
+
+The tracker does not sign in. It posts to `POST /api/v1/trackers/ingest` with the header `x-tracker-key`. The value is `TRACKER_INGEST_SECRET` on the server. A missing or wrong key is rejected.
+
+One request can carry up to 2000 points. Each point has latitude, longitude, speed in km/h, ignition on or off, the time the tracker recorded it, and whether the device was unplugged. Heading is optional.
+
+Store and forward works like this:
+
+1. When the truck has no network, the tracker keeps points on the device.
+2. When the network returns, it uploads the whole buffer, including old timestamps.
+3. The server sorts them by the time they were recorded and keeps them for playback.
+4. A point already stored for that tracker and time is skipped, so a retry does not double the distance.
+5. A point more than two minutes in the future is skipped. A point older than the retention window is skipped.
+6. The truck’s latest fix moves forward only. An older buffered point is kept for the report, but it does not pull the live pin backwards.
+7. Hearing from the tracker at all marks it online again, even when the batch is old.
+
+Points are kept for 90 days unless `FLEET_POINT_RETENTION_DAYS` says otherwise. The same cleanup runs when a batch arrives and on the existing scheduled job.
+
+### Live map
+
+Open **Live map**. It refreshes every few seconds. Each truck is one of:
+
+| Status | Meaning |
+| --- | --- |
+| Moving | Latest speed is 5 km/h or more, and a point arrived in the last 3 minutes. |
+| Idle | Engine is on, speed is under 5 km/h, and a point arrived in the last 3 minutes. |
+| Stopped | Engine is off, or ignition was not sent, and speed is under 5 km/h. |
+| Offline | Nothing has been received for 3 minutes, or the truck has never reported. |
+
+The pin shows the vehicle number, status, speed, and ignition. The table under the map is the same list.
+
+### Alerts
+
+Alerts are written as the points are applied, in recorded order. The list under the live map shows the latest ones. Each kind is raised once until the condition clears.
+
+| Alert | When |
+| --- | --- |
+| Geofence entry | The truck crosses into a depot or customer site. |
+| Geofence exit | The truck leaves that place. |
+| Long stoppage | Stopped for 15 minutes outside a depot. A stop inside a depot does not alert. |
+| Over-speed | Speed goes over 80 km/h. |
+| Route deviation | An active trip has a planned route of at least two points, and the truck is more than 500 m off that line. It clears once the truck is back within 300 m. |
+| Device unplugged | A point says tracker power was disconnected. |
+| Offline | No upload for 3 minutes. The next upload clears it. |
+
+### Reports
+
+Open **Reports** and pick a date. The day is India time.
+
+1. Each truck shows distance in km, idle minutes, and how many stoppages were recorded.
+2. Idle time is the engine-on time below 5 km/h. A gap longer than 30 minutes is treated as offline and is not added to distance or idle.
+3. A stoppage is a stopped stretch of at least 2 minutes.
+4. Click **Play route**. The map draws that day’s points in order.
+
+A tracker in the cab that reads a driver BLE card is not part of this flow. School cards stay on the school path.
 
 ## 12. Company attendance day
 
@@ -158,7 +220,7 @@ Stay signed in as the company admin. Open **Attendance**.
 
 1. Set the grace period, shift, lunch, and review window. Write the monitoring policy. Save the rules. Attendance readings are refused until this policy is saved.
 2. Add office gateways for the floor, meeting rooms, cafeteria, and corridors you have actually surveyed. A dead zone will look like personal time.
-3. Open **Employees**. On **Save card and consent**, assign a card id, mark office or field, and tick written consent. Optionally set a login email and password so the employee can open **My day**.
+3. Open **Cards and consent**. Pick the employee (or click **Edit** in the list), assign a card id, mark office or field, and tick written consent. Optionally set a login email and password so the employee can open **My day**.
 4. Back on **Attendance**, record a detection: gateway, card id, and time. The first reading of the day is check-in and the employee shows **In office**.
 5. Record another reading more than the grace period later. The time from the last reading to this one is an out-of-office gap, status **In review**. It is not personal time yet.
 6. The employee signs in, opens **My day**, and disputes that gap with a reason. It becomes **Disputed** and is still not deducted.

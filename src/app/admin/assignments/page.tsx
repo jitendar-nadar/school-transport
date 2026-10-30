@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -23,6 +24,7 @@ export default function AssignmentsPage() {
   const routes = useRecords<Named & { direction?: string }>("/api/v1/routes?limit=100");
   const stops = useRecords<Named>("/api/v1/stops?limit=100");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Assignment | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -30,6 +32,8 @@ export default function AssignmentsPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const value = (name: string) => String(form.get(name) || "") || null;
+    setMessage("");
+    setFieldErrors({});
     try {
       await api(editing ? `/api/v1/transport-assignments/${editing.id}` : "/api/v1/transport-assignments", {
         method: editing ? "PATCH" : "POST",
@@ -46,7 +50,9 @@ export default function AssignmentsPage() {
       setMessage("Assignment saved.");
       await assignments.reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the assignment.");
+      const result = failureOf(caught, "Could not save the assignment.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -72,7 +78,7 @@ export default function AssignmentsPage() {
       {assignments.error ? <Notice>{assignments.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
+        <ValidatedForm key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
           <Field label="Student">
             <select className={controlClass} name="studentId" defaultValue={editing?.studentId?.id || ""} required>
               <option value="">Choose</option>
@@ -95,7 +101,7 @@ export default function AssignmentsPage() {
             <PrimaryButton>{editing ? "Save changes" : "Save assignment"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => setEditing(null)}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -108,7 +114,7 @@ export default function AssignmentsPage() {
             item.afternoonRouteId?.name || "—",
             item.afternoonStopId?.name || "—",
             item.status,
-            <RowActions key={item.id} onEdit={() => { setEditing(item); setMessage(""); }} onDelete={() => { void removeAssignment(item); }} />,
+            <RowActions key={item.id} onEdit={() => { setEditing(item); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeAssignment(item); }} />,
           ])}
         />
       </Panel>

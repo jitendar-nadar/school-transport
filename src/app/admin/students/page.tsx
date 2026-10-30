@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
 import { useScope } from "@/components/admin/shell";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -31,6 +32,7 @@ export default function StudentsPage() {
   const classes = useRecords<SchoolClass>("/api/v1/classes?limit=100");
   const [chosenSchoolId, setChosenSchoolId] = useState(schoolId || "");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formVersion, setFormVersion] = useState(0);
   const [className, setClassName] = useState("");
   const [editing, setEditing] = useState<Student | null>(null);
@@ -53,17 +55,19 @@ export default function StudentsPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setMessage("");
     const selectedSchoolId = isPlatformAdmin ? String(form.get("schoolId") || "") : schoolId || "";
     if (!selectedSchoolId) {
-      setMessage("Select a school before adding a student.");
+      setFieldErrors({ schoolId: "Select a school before adding a student." });
       return;
     }
     const parentIds = form.getAll("parentIds").map(String).filter(Boolean);
     const selectedClass = String(form.get("className") || "");
     if (!selectedClass) {
-      setMessage("Choose a class.");
+      setFieldErrors({ className: "Choose a class." });
       return;
     }
+    setFieldErrors({});
     const body = {
       schoolId: selectedSchoolId,
       name: form.get("name"),
@@ -85,7 +89,9 @@ export default function StudentsPage() {
       setMessage("Student saved.");
       await students.reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the student.");
+      const result = failureOf(caught, "Could not save the student.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -116,7 +122,7 @@ export default function StudentsPage() {
       {students.error ? <Notice>{students.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
+        <ValidatedForm key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
           {isPlatformAdmin ? (
             <Field label="School">
               <select className={controlClass} name="schoolId" required value={chosenSchoolId} onChange={(event) => chooseSchool(event.target.value)}>
@@ -127,8 +133,8 @@ export default function StudentsPage() {
               </select>
             </Field>
           ) : null}
-          <Field label="Name"><input className={controlClass} name="name" defaultValue={editing?.name || ""} required /></Field>
-          <Field label="Student code"><input className={controlClass} name="studentCode" defaultValue={editing?.studentCode || ""} required /></Field>
+          <Field label="Name"><input className={controlClass} name="name" minLength={2} maxLength={120} defaultValue={editing?.name || ""} required /></Field>
+          <Field label="Student code"><input className={controlClass} name="studentCode" maxLength={40} defaultValue={editing?.studentCode || ""} required /></Field>
           <SearchSelect
             key={`class-${chosenSchoolId}-${editing?.id || "new"}-${formVersion}`}
             label="Class"
@@ -176,7 +182,7 @@ export default function StudentsPage() {
             <PrimaryButton disabled={isPlatformAdmin && !chosenSchoolId}>{editing ? "Save changes" : "Add student"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => { setEditing(null); setClassName(""); setFormVersion((version) => version + 1); }}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -191,7 +197,7 @@ export default function StudentsPage() {
             student.status,
             <RowActions
               key={student.id}
-              onEdit={() => { setEditing(student); setClassName(student.className); setMessage(""); }}
+              onEdit={() => { setEditing(student); setClassName(student.className); setMessage(""); setFieldErrors({}); }}
               onDelete={() => { void removeStudent(student); }}
             />,
           ])}

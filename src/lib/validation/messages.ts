@@ -42,27 +42,52 @@ function rewrite(message: string) {
   return message;
 }
 
+function ensurePeriod(text: string) {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
 function sentence(field: string, message: string) {
   const label = labelFor(field);
   const text = rewrite(message).replace(/\.$/, "");
-  if (text.toLowerCase().startsWith(label.toLowerCase())) return `${text}.`;
-  if (/^(must|is|enter)\b/i.test(text)) {
-    return `${label} ${text.charAt(0).toLowerCase()}${text.slice(1)}.`;
+  if (text.toLowerCase().startsWith(label.toLowerCase())) return ensurePeriod(text);
+  if (/^(must|is)\b/i.test(text)) return ensurePeriod(`${label} ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
+  if (/^(enter|choose|use|select|give|write|password|confirm)\b/i.test(text)) return ensurePeriod(text);
+  return ensurePeriod(`${label}: ${text}`);
+}
+
+function absorbField(field: string, value: unknown, into: Record<string, string>) {
+  if (typeof value === "string" && value) {
+    if (!into[field]) into[field] = sentence(field, value);
+    return;
   }
-  return `${label}: ${text}.`;
+  if (Array.isArray(value)) {
+    for (const item of value) absorbField(field, item, into);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record._errors)) absorbField(field, record._errors, into);
+  for (const [key, nested] of Object.entries(record)) {
+    if (key === "_errors") continue;
+    absorbField(key, nested, into);
+  }
+}
+
+export function fieldErrorMap(details: unknown) {
+  const fields: Record<string, string> = {};
+  if (!details || typeof details !== "object") return fields;
+  const flattened = details as Flattened;
+  for (const [field, messages] of Object.entries(flattened.fieldErrors || {})) absorbField(field, messages, fields);
+  return fields;
+}
+
+export function formErrorText(details: unknown) {
+  if (!details || typeof details !== "object") return "";
+  const flattened = details as Flattened;
+  return (flattened.formErrors || []).filter(Boolean).map((message) => (message.endsWith(".") ? message : `${message}.`)).join(" ");
 }
 
 export function formatValidationMessage(details: unknown) {
-  if (!details || typeof details !== "object") return "";
-  const flattened = details as Flattened;
-  const lines: string[] = [];
-  for (const message of flattened.formErrors || []) {
-    if (message) lines.push(message.endsWith(".") ? message : `${message}.`);
-  }
-  for (const [field, messages] of Object.entries(flattened.fieldErrors || {})) {
-    for (const message of messages || []) {
-      if (message) lines.push(sentence(field, message));
-    }
-  }
+  const lines = [formErrorText(details), ...Object.values(fieldErrorMap(details))].filter(Boolean);
   return lines.join(" ");
 }

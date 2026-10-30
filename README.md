@@ -142,3 +142,5 @@ npm test
 npm run typecheck
 npm run lint
 ```
+
+Step-by-step execution for the automated suite and the console checks is in [TEST.md](TEST.md).

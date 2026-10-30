@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { EMPTY_FIELD_ERRORS } from "@/components/admin/form-error-context";
+import { failureOf, passwordHint, passwordPattern, timeHint, timePattern, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClass } from "@/components/admin/ui";
 import { useScope } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
@@ -12,7 +14,10 @@ type Policy = {
   shiftEnd: string;
   lunchStart: string;
   lunchEnd: string;
+  silenceCountsAsPersonal: boolean;
   lunchCountsAsPersonal: boolean;
+  manualCountsAsPersonal: boolean;
+  pilotOneFloor: boolean;
   reviewWindowHours: number;
   fieldCheckInAllowed: boolean;
   monitoringPolicy: string;
@@ -60,7 +65,10 @@ const emptyPolicy: Policy = {
   shiftEnd: "18:30",
   lunchStart: "13:00",
   lunchEnd: "14:00",
+  silenceCountsAsPersonal: true,
   lunchCountsAsPersonal: false,
+  manualCountsAsPersonal: true,
+  pilotOneFloor: false,
   reviewWindowHours: 48,
   fieldCheckInAllowed: false,
   monitoringPolicy: "",
@@ -68,6 +76,7 @@ const emptyPolicy: Policy = {
 
 export default function AttendancePage() {
   const { user } = useScope();
+  const reviewerOnly = user.role === "COMPANY_HR";
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState(user.companyId || "");
   const [board, setBoard] = useState<Board | null>(null);
@@ -80,6 +89,8 @@ export default function AttendancePage() {
     return `${year}-${monthPart}`;
   });
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [errorOwner, setErrorOwner] = useState("");
   const [tone, setTone] = useState<"ok" | "error">("error");
   const [error, setError] = useState("");
 
@@ -112,11 +123,41 @@ export default function AttendancePage() {
   async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setErrorOwner("policy");
+    setFieldErrors({});
     try {
       await api("/api/v1/attendance/policy", { method: "PATCH", school: false, body: { ...policy, companyId } });
+      setErrorOwner("");
       say("Rules saved.", "ok");
     } catch (caught) {
-      say(caught instanceof Error ? caught.message : "Could not save the rules.", "error");
+      const result = failureOf(caught, "Could not save the rules.");
+      setErrorOwner("policy");
+      setFieldErrors(result.fields);
+      if (result.message) say(result.message, "error");
+    }
+  }
+
+  async function addReviewer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setMessage("");
+    setErrorOwner("hr");
+    setFieldErrors({});
+    try {
+      await api("/api/v1/attendance/reviewers", {
+        method: "POST",
+        school: false,
+        body: { companyId, name: form.get("name"), email: form.get("email"), phone: form.get("phone"), password: form.get("password") },
+      });
+      formElement.reset();
+      setErrorOwner("");
+      say("HR reviewer saved.", "ok");
+    } catch (caught) {
+      const result = failureOf(caught, "Could not add the HR reviewer.");
+      setErrorOwner("hr");
+      setFieldErrors(result.fields);
+      if (result.message) say(result.message, "error");
     }
   }
 
@@ -125,12 +166,18 @@ export default function AttendancePage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
+    setErrorOwner("gateway");
+    setFieldErrors({});
     try {
       await api("/api/v1/attendance/gateways", { method: "POST", school: false, body: { companyId, name: form.get("name"), zone: form.get("zone") } });
       formElement.reset();
+      setErrorOwner("");
       say("Gateway saved.", "ok");
     } catch (caught) {
-      say(caught instanceof Error ? caught.message : "Could not add the gateway.", "error");
+      const result = failureOf(caught, "Could not add the gateway.");
+      setErrorOwner("gateway");
+      setFieldErrors(result.fields);
+      if (result.message) say(result.message, "error");
     }
   }
 
@@ -139,6 +186,8 @@ export default function AttendancePage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
+    setErrorOwner("detect");
+    setFieldErrors({});
     try {
       await api("/api/v1/attendance/detections", {
         method: "POST",
@@ -151,9 +200,13 @@ export default function AttendancePage() {
         },
       });
       formElement.reset();
+      setErrorOwner("");
       say("Detection saved.", "ok");
     } catch (caught) {
-      say(caught instanceof Error ? caught.message : "Could not record the detection.", "error");
+      const result = failureOf(caught, "Could not record the detection.");
+      setErrorOwner("detect");
+      setFieldErrors(result.fields);
+      if (result.message) say(result.message, "error");
     }
   }
 
@@ -193,55 +246,70 @@ export default function AttendancePage() {
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone={tone}>{message}</Notice> : null}
       {!companyId ? <Notice>Choose a company to set attendance rules.</Notice> : null}
+      {policy.pilotOneFloor ? <Notice>Pilot is on. Only a floor gateway can hear cards. Turn the pilot off after that floor is tuned.</Notice> : null}
       {companyId && board ? (
         <>
-          <Panel>
-            <form className="grid gap-3 md:grid-cols-3" onSubmit={(event) => void savePolicy(event)}>
-              <Field label="Grace period (minutes)"><input className={controlClass} type="number" min={1} value={policy.gracePeriodMinutes} onChange={(event) => setPolicy({ ...policy, gracePeriodMinutes: Number(event.target.value) })} required /></Field>
-              <Field label="Shift starts"><input className={controlClass} value={policy.shiftStart} onChange={(event) => setPolicy({ ...policy, shiftStart: event.target.value })} required /></Field>
-              <Field label="Shift ends"><input className={controlClass} value={policy.shiftEnd} onChange={(event) => setPolicy({ ...policy, shiftEnd: event.target.value })} required /></Field>
-              <Field label="Lunch starts"><input className={controlClass} value={policy.lunchStart} onChange={(event) => setPolicy({ ...policy, lunchStart: event.target.value })} required /></Field>
-              <Field label="Lunch ends"><input className={controlClass} value={policy.lunchEnd} onChange={(event) => setPolicy({ ...policy, lunchEnd: event.target.value })} required /></Field>
-              <Field label="Review window (hours)"><input className={controlClass} type="number" min={1} value={policy.reviewWindowHours} onChange={(event) => setPolicy({ ...policy, reviewWindowHours: Number(event.target.value) })} required /></Field>
+          {reviewerOnly ? null : <Panel>
+            <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "policy" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={(event) => void savePolicy(event)}>
+              <Field label="Grace period (minutes)"><input className={controlClass} name="gracePeriodMinutes" type="number" min={1} max={180} value={policy.gracePeriodMinutes} onChange={(event) => setPolicy({ ...policy, gracePeriodMinutes: Number(event.target.value) })} required /></Field>
+              <Field label="Shift starts"><input className={controlClass} name="shiftStart" value={policy.shiftStart} pattern={timePattern} title={timeHint} onChange={(event) => setPolicy({ ...policy, shiftStart: event.target.value })} required /></Field>
+              <Field label="Shift ends"><input className={controlClass} name="shiftEnd" value={policy.shiftEnd} pattern={timePattern} title={timeHint} onChange={(event) => setPolicy({ ...policy, shiftEnd: event.target.value })} required /></Field>
+              <Field label="Lunch starts"><input className={controlClass} name="lunchStart" value={policy.lunchStart} pattern={timePattern} title={timeHint} onChange={(event) => setPolicy({ ...policy, lunchStart: event.target.value })} required /></Field>
+              <Field label="Lunch ends"><input className={controlClass} name="lunchEnd" value={policy.lunchEnd} pattern={timePattern} title={timeHint} onChange={(event) => setPolicy({ ...policy, lunchEnd: event.target.value })} required /></Field>
+              <Field label="Review window (hours)"><input className={controlClass} name="reviewWindowHours" type="number" min={1} max={336} value={policy.reviewWindowHours} onChange={(event) => setPolicy({ ...policy, reviewWindowHours: Number(event.target.value) })} required /></Field>
+              <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={policy.silenceCountsAsPersonal} onChange={(event) => setPolicy({ ...policy, silenceCountsAsPersonal: event.target.checked })} /> Unexplained silence counts as personal time</label>
               <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={policy.lunchCountsAsPersonal} onChange={(event) => setPolicy({ ...policy, lunchCountsAsPersonal: event.target.checked })} /> Lunch gaps count as personal time</label>
+              <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={policy.manualCountsAsPersonal} onChange={(event) => setPolicy({ ...policy, manualCountsAsPersonal: event.target.checked })} /> Hand-logged gaps count as personal time</label>
+              <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={policy.pilotOneFloor} onChange={(event) => setPolicy({ ...policy, pilotOneFloor: event.target.checked })} /> Pilot one floor before covering the whole office</label>
               <label className="flex items-center gap-2 text-sm md:col-span-3"><input type="checkbox" checked={policy.fieldCheckInAllowed} onChange={(event) => setPolicy({ ...policy, fieldCheckInAllowed: event.target.checked })} /> Allow phone GPS check-in for field staff</label>
               <Field label="Monitoring policy">
-                <textarea className={controlClass} rows={3} value={policy.monitoringPolicy} onChange={(event) => setPolicy({ ...policy, monitoringPolicy: event.target.value })} required />
+                <textarea className={controlClass} name="monitoringPolicy" rows={3} minLength={20} maxLength={2000} value={policy.monitoringPolicy} onChange={(event) => setPolicy({ ...policy, monitoringPolicy: event.target.value })} required />
               </Field>
               <div className="md:col-span-3"><PrimaryButton>Save rules</PrimaryButton></div>
-            </form>
-          </Panel>
-          <Panel>
-            <form className="grid gap-3 md:grid-cols-3" onSubmit={(event) => void addGateway(event)}>
-              <Field label="Gateway"><input className={controlClass} name="name" required /></Field>
+            </ValidatedForm>
+          </Panel>}
+          {reviewerOnly ? null : <Panel>
+            <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "hr" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={(event) => void addReviewer(event)}>
+              <Field label="HR name"><input className={controlClass} name="name" minLength={2} required /></Field>
+              <Field label="HR email"><input className={controlClass} name="email" type="email" required /></Field>
+              <Field label="HR phone"><input className={controlClass} name="phone" minLength={8} maxLength={20} required /></Field>
+              <Field label="HR password"><input className={controlClass} name="password" type="password" minLength={8} pattern={passwordPattern} title={passwordHint} required /></Field>
+              <div className="md:col-span-3"><PrimaryButton>Add HR reviewer</PrimaryButton></div>
+            </ValidatedForm>
+          </Panel>}
+          {reviewerOnly ? null : <Panel>
+            <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "gateway" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={(event) => void addGateway(event)}>
+              <Field label="Gateway"><input className={controlClass} name="name" minLength={2} required /></Field>
               <Field label="Where">
                 <select className={controlClass} name="zone" defaultValue="FLOOR">
                   <option value="FLOOR">Floor</option>
-                  <option value="MEETING_ROOM">Meeting room</option>
-                  <option value="CAFETERIA">Cafeteria</option>
-                  <option value="CORRIDOR">Corridor</option>
-                  <option value="OTHER">Other</option>
+                  {policy.pilotOneFloor ? null : <>
+                    <option value="MEETING_ROOM">Meeting room</option>
+                    <option value="CAFETERIA">Cafeteria</option>
+                    <option value="CORRIDOR">Corridor</option>
+                    <option value="OTHER">Other</option>
+                  </>}
                 </select>
               </Field>
               <div className="md:col-span-3"><PrimaryButton>Add gateway</PrimaryButton></div>
-            </form>
-          </Panel>
+            </ValidatedForm>
+          </Panel>}
           <Panel>
             <DataTable columns={["Gateway", "Where"]} rows={board.gateways.map((gateway) => [gateway.name, gateway.zone.replaceAll("_", " ")])} />
           </Panel>
-          <Panel>
-            <form className="grid gap-3 md:grid-cols-3" onSubmit={(event) => void detect(event)}>
+          {reviewerOnly ? null : <Panel>
+            <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={errorOwner === "detect" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={(event) => void detect(event)}>
               <Field label="Gateway">
                 <select className={controlClass} name="gatewayId" required>
                   <option value="">Select</option>
                   {board.gateways.map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.name}</option>)}
                 </select>
               </Field>
-              <Field label="Card id"><input className={controlClass} name="tagIdentifier" required /></Field>
+              <Field label="Card id"><input className={controlClass} name="tagIdentifier" minLength={2} maxLength={64} required /></Field>
               <Field label="Time (blank = now)"><input className={controlClass} name="occurredAt" type="datetime-local" /></Field>
               <div className="md:col-span-3"><PrimaryButton>Record detection</PrimaryButton></div>
-            </form>
-          </Panel>
+            </ValidatedForm>
+          </Panel>}
           <Panel>
             <DataTable
               columns={["Employee", "Card", "Presence", "In", "Last seen", "Out"]}
@@ -274,11 +342,11 @@ export default function AttendancePage() {
             />
           </Panel>
           <Panel>
-            <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void loadReport(event)}>
-              <Field label="Month"><input className={controlClass} type="month" value={month} onChange={(event) => setMonth(event.target.value)} required /></Field>
+            <ValidatedForm className="flex flex-wrap items-end gap-3" serverErrors={errorOwner === "report" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => setMessage("")} onSubmit={(event) => void loadReport(event)}>
+              <Field label="Month"><input className={controlClass} name="month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} required /></Field>
               <PrimaryButton>Load report</PrimaryButton>
               <a className="rounded-lg border border-slate-300 px-4 py-2 text-sm" href={`/api/v1/attendance/report?companyId=${companyId}&month=${month}&format=csv`}>Download CSV</a>
-            </form>
+            </ValidatedForm>
           </Panel>
           {report ? (
             <Panel>

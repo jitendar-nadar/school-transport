@@ -114,7 +114,7 @@ export function requireCompanyId(user: AuthUser, requested?: string | null) {
     if (!requested) throw new AppError(400, "COMPANY_REQUIRED", "Choose a company before continuing.");
     return requested;
   }
-  if ((user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.EMPLOYEE) || !user.companyId) {
+  if (user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.COMPANY_HR && user.role !== ROLES.EMPLOYEE || !user.companyId) {
     throw new AppError(403, "FORBIDDEN", "This account cannot access company records.");
   }
   if (requested && requested !== user.companyId) {

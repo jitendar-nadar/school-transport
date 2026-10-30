@@ -37,10 +37,28 @@ export const policySchema = z.object({
   shiftEnd: clockSchema,
   lunchStart: clockSchema,
   lunchEnd: clockSchema,
+  silenceCountsAsPersonal: z.boolean(),
   lunchCountsAsPersonal: z.boolean(),
+  manualCountsAsPersonal: z.boolean(),
+  pilotOneFloor: z.boolean(),
   reviewWindowHours: z.coerce.number().int().min(1, "Review window must be at least 1 hour.").max(336),
   fieldCheckInAllowed: z.boolean(),
   monitoringPolicy: z.string().trim().min(20, "Write the monitoring policy in at least 20 characters.").max(2000),
+});
+
+export const hrSchema = z.object({
+  companyId: companyIdSchema,
+  name: z.string().trim().min(2, "Name must be at least 2 characters."),
+  email: z.email("Enter a valid email address."),
+  phone: z.string().trim().min(8, "Phone must be at least 8 digits.").max(20),
+  password: passwordSchema,
+});
+
+export const gatewayIngestSchema = z.object({
+  gatewayId: companyIdSchema,
+  tagIdentifier: z.string().trim().min(2, "Enter the card id.").max(64),
+  occurredAt: z.string().optional().default(""),
+  rssi: z.preprocess((value) => (value == null || value === "" ? undefined : value), z.coerce.number().min(-120).max(0).optional()),
 });
 
 export const gatewaySchema = z.object({
@@ -144,7 +162,10 @@ export async function updatePolicy(user: AuthUser, input: z.infer<typeof policyS
   company.shiftEnd = input.shiftEnd;
   company.lunchStart = input.lunchStart;
   company.lunchEnd = input.lunchEnd;
+  company.silenceCountsAsPersonal = input.silenceCountsAsPersonal;
   company.lunchCountsAsPersonal = input.lunchCountsAsPersonal;
+  company.manualCountsAsPersonal = input.manualCountsAsPersonal;
+  company.pilotOneFloor = input.pilotOneFloor;
   company.reviewWindowHours = input.reviewWindowHours;
   company.fieldCheckInAllowed = input.fieldCheckInAllowed;
   company.monitoringPolicy = input.monitoringPolicy;
@@ -155,7 +176,11 @@ export async function updatePolicy(user: AuthUser, input: z.infer<typeof policyS
 export async function createGateway(user: AuthUser, input: z.infer<typeof gatewaySchema>) {
   if (user.role === ROLES.EMPLOYEE) throw new AppError(403, "FORBIDDEN", "Only a company admin can add a gateway.");
   const companyId = requireCompanyId(user, input.companyId);
-  await loadCompany(companyId);
+  const company = await loadCompany(companyId);
+  const policy = policyFrom(company);
+  if (policy.pilotOneFloor && input.zone !== "FLOOR") {
+    throw new AppError(400, "PILOT_FLOOR", "The pilot accepts only a floor gateway. Turn the pilot off to cover meeting rooms, the cafeteria, and corridors.");
+  }
   const gateway = await Gateway.create({
     ownerType: "COMPANY",
     ownerId: companyId,
@@ -227,6 +252,9 @@ export async function recordDetection(user: AuthUser, input: z.infer<typeof dete
   if (!employee.consentGranted) throw new AppError(403, "CONSENT_REQUIRED", "This employee has not given written monitoring consent.");
   const gateway = await Gateway.findOne({ _id: input.gatewayId, ownerType: "COMPANY", ownerId: companyId, kind: "OFFICE", status: "ACTIVE" });
   if (!gateway) throw new AppError(400, "GATEWAY_REQUIRED", "Choose an active office gateway for this company.");
+  if (policy.pilotOneFloor && gateway.zone !== "FLOOR") {
+    throw new AppError(400, "PILOT_FLOOR", "This pilot only hears floor gateways. Turn the pilot off after that floor is tuned.");
+  }
   const occurredAt = input.occurredAt ? parseOfficeTime(input.occurredAt) : new Date();
   if (!occurredAt) throw new AppError(400, "VALIDATION_ERROR", "Enter a valid detection time.");
   if (occurredAt.getTime() > Date.now() + 60_000) throw new AppError(400, "VALIDATION_ERROR", "A detection cannot be in the future.");
@@ -285,6 +313,39 @@ export async function recordDetection(user: AuthUser, input: z.infer<typeof dete
     rssi: input.rssi ?? null,
   });
   return { day: serialize(day.toObject()), gap: gap ? serialize(gap.toObject()) : null };
+}
+
+export function assertGatewayKey(secret: string | null) {
+  const expected = process.env.GATEWAY_INGEST_SECRET;
+  if (!expected || secret !== expected) {
+    throw new AppError(401, "UNAUTHORIZED", "Gateway key is invalid.");
+  }
+}
+
+export async function ingestGatewayDetection(input: z.infer<typeof gatewayIngestSchema>) {
+  const gateway = await Gateway.findOne({ _id: input.gatewayId, ownerType: "COMPANY", kind: "OFFICE" }).lean();
+  if (!gateway) throw notFound("Gateway");
+  return recordDetection(
+    { id: "", schoolId: null, companyId: String(gateway.ownerId), fleetId: null, employeeId: null, name: "Gateway", email: "", phone: "", role: ROLES.COMPANY_ADMIN, status: "ACTIVE" },
+    { companyId: String(gateway.ownerId), tagIdentifier: input.tagIdentifier, gatewayId: input.gatewayId, occurredAt: input.occurredAt, rssi: input.rssi },
+  );
+}
+
+export async function createHrReviewer(user: AuthUser, input: z.infer<typeof hrSchema>) {
+  if (user.role === ROLES.EMPLOYEE || user.role === ROLES.COMPANY_HR) {
+    throw new AppError(403, "FORBIDDEN", "Only a company admin can add an HR reviewer.");
+  }
+  const companyId = requireCompanyId(user, input.companyId);
+  const company = await loadCompany(companyId);
+  const account = await User.create({
+    companyId: company._id,
+    name: input.name,
+    email: input.email.toLowerCase(),
+    phone: input.phone,
+    passwordHash: await hashPassword(input.password),
+    role: ROLES.COMPANY_HR,
+  });
+  return serialize(account.toObject());
 }
 
 export async function fieldCheck(user: AuthUser, input: z.infer<typeof fieldSchema>) {
@@ -407,7 +468,7 @@ export async function myAttendance(user: AuthUser, date?: string) {
     AttendanceDay.findOne({ companyId, employeeId: employee._id, workDate: dayKey }).lean(),
     start && end ? AttendanceGap.find({ companyId, employeeId: employee._id, startedAt: { $lt: end }, endedAt: { $gt: start } }).sort({ startedAt: 1 }).lean() : [],
     start && end && employee.tagIdentifier
-      ? DetectionEvent.find({ ownerType: "COMPANY", ownerId: companyId, tagIdentifier: employee.tagIdentifier, occurredAt: { $gte: start, $lt: end } }).sort({ occurredAt: 1 }).lean()
+      ? DetectionEvent.find({ ownerType: "COMPANY", ownerId: companyId, tagIdentifier: employee.tagIdentifier, occurredAt: { $gte: start, $lt: end } }).populate("gatewayId", "name zone").sort({ occurredAt: 1 }).lean()
       : [],
   ]);
   return {

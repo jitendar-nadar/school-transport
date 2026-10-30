@@ -55,7 +55,7 @@ async function assertCanSignIn(user: { role: string; schoolId?: unknown; company
     throw new AppError(403, "ACCOUNT_DISABLED", "This account is disabled.");
   }
   if (user.role === ROLES.PLATFORM_ADMIN) return;
-  if (user.role === ROLES.COMPANY_ADMIN || user.role === ROLES.EMPLOYEE) {
+  if (user.role === ROLES.COMPANY_ADMIN || user.role === ROLES.COMPANY_HR || user.role === ROLES.EMPLOYEE) {
     const { Company } = await import("@/models/company");
     const company = await Company.findById(user.companyId).select("status").lean();
     if (!company) throw new AppError(403, "COMPANY_MISSING", "This company no longer exists.");

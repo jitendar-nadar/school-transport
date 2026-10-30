@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
+import { failureOf, timeHint, timePattern, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -30,6 +31,7 @@ export default function RoutesPage() {
   const vehicles = useRecords<Vehicle>("/api/v1/vehicles?limit=100");
   const stops = useRecords<Stop>("/api/v1/stops?limit=100");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formVersion, setFormVersion] = useState(0);
   const [editing, setEditing] = useState<Route | null>(null);
 
@@ -38,10 +40,12 @@ export default function RoutesPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const stopIds = form.getAll("stops").map(String).filter(Boolean);
+    setMessage("");
     if (!stopIds.length) {
-      setMessage("Choose at least one stop.");
+      setFieldErrors({ stops: "Choose at least one stop." });
       return;
     }
+    setFieldErrors({});
     try {
       await api(editing ? `/api/v1/routes/${editing.id}` : "/api/v1/routes", {
         method: editing ? "PATCH" : "POST",
@@ -61,7 +65,9 @@ export default function RoutesPage() {
       setMessage("Route saved.");
       await routes.reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the route.");
+      const result = failureOf(caught, "Could not save the route.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -83,9 +89,9 @@ export default function RoutesPage() {
       {routes.error ? <Notice>{routes.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-          <Field label="Name"><input className={controlClass} name="name" defaultValue={editing?.name || ""} required /></Field>
-          <Field label="Code"><input className={controlClass} name="routeCode" defaultValue={editing?.routeCode || ""} required /></Field>
+        <ValidatedForm key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+          <Field label="Name"><input className={controlClass} name="name" minLength={2} defaultValue={editing?.name || ""} required /></Field>
+          <Field label="Code"><input className={controlClass} name="routeCode" minLength={2} maxLength={20} defaultValue={editing?.routeCode || ""} required /></Field>
           <Field label="Direction"><select className={controlClass} name="direction" defaultValue={editing?.direction || "PICKUP"}><option>PICKUP</option><option>DROP</option></select></Field>
           <Field label="Vehicle">
             <select className={controlClass} name="vehicleId" defaultValue={idOf(editing?.vehicleId)} required>
@@ -93,8 +99,8 @@ export default function RoutesPage() {
               {vehicles.rows.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.vehicleNumber}</option>)}
             </select>
           </Field>
-          <Field label="Start"><input className={controlClass} name="scheduledStartTime" placeholder="07:10" defaultValue={editing?.scheduledStartTime || ""} required /></Field>
-          <Field label="End"><input className={controlClass} name="scheduledEndTime" placeholder="08:00" defaultValue={editing?.scheduledEndTime || ""} required /></Field>
+          <Field label="Start"><input className={controlClass} name="scheduledStartTime" placeholder="07:10" pattern={timePattern} title={timeHint} defaultValue={editing?.scheduledStartTime || ""} required /></Field>
+          <Field label="End"><input className={controlClass} name="scheduledEndTime" placeholder="08:00" pattern={timePattern} title={timeHint} defaultValue={editing?.scheduledEndTime || ""} required /></Field>
           <SearchSelect
             key={`stops-${editing?.id || "new"}-${formVersion}`}
             label="Stops"
@@ -111,7 +117,7 @@ export default function RoutesPage() {
             <PrimaryButton>{editing ? "Save changes" : "Add route"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => { setEditing(null); setFormVersion((version) => version + 1); }}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -123,7 +129,7 @@ export default function RoutesPage() {
             route.direction,
             typeof route.vehicleId === "object" ? route.vehicleId?.vehicleNumber || "" : "",
             route.scheduledStartTime,
-            <RowActions key={route.id} onEdit={() => { setEditing(route); setMessage(""); }} onDelete={() => { void removeRoute(route); }} />,
+            <RowActions key={route.id} onEdit={() => { setEditing(route); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeRoute(route); }} />,
           ])}
         />
       </Panel>

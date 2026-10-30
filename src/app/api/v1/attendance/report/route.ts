@@ -27,4 +27,4 @@ export const GET = apiHandler(async ({ req, user }) => {
     });
   }
   return ok(report);
-}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN] });
+}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN, ROLES.COMPANY_HR] });

@@ -2,7 +2,9 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PrimaryButton, controlClass } from "@/components/admin/ui";
+import { Field, Notice, PrimaryButton, controlClass } from "@/components/admin/ui";
+import { fieldErrorMap, formErrorText } from "@/lib/validation/messages";
+import { ValidatedForm } from "@/components/admin/validated-form";
 
 const demoAccounts =
   process.env.NODE_ENV === "development"
@@ -18,6 +20,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ function LoginForm() {
     event.preventDefault();
     setPending(true);
     setError("");
+    setFieldErrors({});
     const response = await fetch("/api/v1/auth/login", {
       method: "POST",
       credentials: "include",
@@ -40,10 +44,12 @@ function LoginForm() {
     const body = await response.json();
     setPending(false);
     if (!response.ok) {
-      setError(body.error?.message || "Sign in failed.");
+      const fields = fieldErrorMap(body.error?.details);
+      setFieldErrors(fields);
+      setError(formErrorText(body.error?.details) || (Object.keys(fields).length ? "" : body.error?.message || "Sign in failed."));
       return;
     }
-    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "EMPLOYEE"].includes(body.data.user.role)) {
+    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "EMPLOYEE"].includes(body.data.user.role)) {
       setError("This console is for administrators. Drivers, attendants, and parents use the mobile apps.");
       await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
       return;
@@ -53,36 +59,22 @@ function LoginForm() {
   }
 
   return (
-    <form className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_16px_40px_rgba(16,35,63,0.08)]" onSubmit={onSubmit}>
+    <ValidatedForm className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_16px_40px_rgba(16,35,63,0.08)]" serverErrors={fieldErrors} onInvalid={() => setError("")} onSubmit={onSubmit}>
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-teal-800">Tracking platform</p>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Admin sign in</h1>
       <p className="mt-1 text-sm leading-6 text-slate-500">Manage a school, a company, or a transport fleet.</p>
       {params.get("denied") ? <p className="mt-4 text-sm text-red-700">Use an administrator account for this console.</p> : null}
-      <label className="mt-6 block text-sm font-medium text-slate-700">
-        Email
-        <input
-          className={`${controlClass} mt-1`}
-          name="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-      </label>
-      <label className="mt-3 block text-sm font-medium text-slate-700">
-        Password
-        <input
-          className={`${controlClass} mt-1`}
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-      </label>
-      {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
+      <div className="mt-6">
+        <Field label="Email">
+          <input className={controlClass} name="email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        </Field>
+      </div>
+      <div className="mt-3">
+        <Field label="Password">
+          <input className={controlClass} name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+        </Field>
+      </div>
+      {error ? <div className="mt-3"><Notice>{error}</Notice></div> : null}
       {demoAccounts.length ? (
         <div className="mt-5 space-y-2">
           <p className="text-xs text-slate-500">Seeded accounts for this local database</p>
@@ -95,6 +87,7 @@ function LoginForm() {
                 setEmail(account.email);
                 setPassword(account.password);
                 setError("");
+                setFieldErrors({});
               }}
             >
               {account.label}
@@ -106,7 +99,7 @@ function LoginForm() {
       <PrimaryButton className="mt-6 w-full py-2.5" disabled={pending}>
         {pending ? "Signing in..." : "Sign in"}
       </PrimaryButton>
-    </form>
+    </ValidatedForm>
   );
 }
 

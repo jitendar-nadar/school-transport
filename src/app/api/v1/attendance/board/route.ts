@@ -10,4 +10,4 @@ export const dynamic = "force-dynamic";
 export const GET = apiHandler(async ({ req, user }) => {
   const query = readQuery(req, listQuerySchema);
   return ok(await attendanceBoard(user, query.companyId));
-}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN] });
+}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN, ROLES.COMPANY_HR] });

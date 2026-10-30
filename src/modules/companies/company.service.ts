@@ -203,6 +203,9 @@ export async function createGap(user: AuthUser, input: z.infer<typeof createGapS
   }
   const company = await Company.findById(tenant).lean();
   if (!company) throw notFound("Company");
+  const policy = policyFrom(company);
+  const described = describeGap(policy, startedAt, endedAt);
+  const counted = policy.manualCountsAsPersonal ? described : { ...described, personalMinutes: 0, countsAsPersonal: false };
   const gap = await AttendanceGap.create({
     companyId: tenant,
     employeeId: employee._id,
@@ -210,7 +213,8 @@ export async function createGap(user: AuthUser, input: z.infer<typeof createGapS
     endedAt,
     reason: input.reason,
     source: "MANUAL",
-    ...describeGap(policyFrom(company), startedAt, endedAt),
+    ...counted,
+    kind: "MANUAL",
   });
   return serialize(gap.toObject());
 }

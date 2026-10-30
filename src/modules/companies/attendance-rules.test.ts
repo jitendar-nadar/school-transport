@@ -7,9 +7,12 @@ import {
   isDeducted,
   isEarlyExit,
   isLate,
+  livePresence,
+  parseClock,
   parseOfficeTime,
   personalMinutes,
   policyFrom,
+  shouldCloseDay,
   workingMinutes,
 } from "./attendance-rules";
 
@@ -37,6 +40,8 @@ describe("office attendance rules", () => {
     assert.ok(started && ended);
     assert.equal(personalMinutes(started, ended, policy), 20);
     assert.equal(personalMinutes(started, ended, { ...policy, lunchCountsAsPersonal: true }), 80);
+    assert.equal(personalMinutes(started, ended, { ...policy, silenceCountsAsPersonal: false, lunchCountsAsPersonal: true }), 60);
+    assert.equal(personalMinutes(started, ended, { ...policy, silenceCountsAsPersonal: false, lunchCountsAsPersonal: false }), 0);
     const lunchOnlyStart = parseOfficeTime("2026-10-16T13:10");
     const lunchOnlyEnd = parseOfficeTime("2026-10-16T13:40");
     assert.ok(lunchOnlyStart && lunchOnlyEnd);
@@ -64,5 +69,26 @@ describe("office attendance rules", () => {
     assert.equal(isLate(onTime, policy.shiftStart), false);
     assert.equal(isEarlyExit(left, policy.shiftEnd), true);
     assert.equal(workingMinutes(onTime, end, 30), 510);
+  });
+
+  it("reports presence from check-in, silence, and check-out", () => {
+    const now = new Date("2026-10-16T05:00:00.000Z");
+    const checkedIn = new Date("2026-10-16T04:00:00.000Z");
+    const quiet = new Date("2026-10-16T04:40:00.000Z");
+    assert.equal(livePresence({ checkedInAt: null, lastSeenAt: null, checkedOutAt: null, now, graceMinutes: 15 }), "NOT_ARRIVED");
+    assert.equal(livePresence({ checkedInAt: checkedIn, lastSeenAt: now, checkedOutAt: null, now, graceMinutes: 15 }), "IN_OFFICE");
+    assert.equal(livePresence({ checkedInAt: checkedIn, lastSeenAt: quiet, checkedOutAt: null, now, graceMinutes: 15 }), "AWAY");
+    assert.equal(livePresence({ checkedInAt: checkedIn, lastSeenAt: quiet, checkedOutAt: now, now, graceMinutes: 15 }), "CHECKED_OUT");
+  });
+
+  it("closes yesterday immediately and today only after shift end plus grace", () => {
+    const during = parseOfficeTime("2026-10-16T18:20");
+    const after = parseOfficeTime("2026-10-16T18:45");
+    assert.ok(during && after);
+    assert.equal(shouldCloseDay("2026-10-16", during, "18:30", 15), false);
+    assert.equal(shouldCloseDay("2026-10-16", after, "18:30", 15), true);
+    assert.equal(shouldCloseDay("2026-10-15", after, "18:30", 15), true);
+    assert.equal(shouldCloseDay("2026-10-17", after, "18:30", 15), false);
+    assert.equal(parseClock("25:00"), null);
   });
 });

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -25,6 +26,7 @@ export default function VehiclesPage() {
   const vehicles = usePagedRecords<Vehicle>("/api/v1/vehicles");
   const people = useRecords<Person>("/api/v1/users?limit=100");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formVersion, setFormVersion] = useState(0);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const drivers = people.rows.filter((person) => person.role === "DRIVER");
@@ -34,6 +36,8 @@ export default function VehiclesPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setMessage("");
+    setFieldErrors({});
     try {
       await api(editing ? `/api/v1/vehicles/${editing.id}` : "/api/v1/vehicles", {
         method: editing ? "PATCH" : "POST",
@@ -51,7 +55,9 @@ export default function VehiclesPage() {
       setMessage("Vehicle saved.");
       await vehicles.reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the vehicle.");
+      const result = failureOf(caught, "Could not save the vehicle.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -73,8 +79,8 @@ export default function VehiclesPage() {
       {vehicles.error ? <Notice>{vehicles.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-          <Field label="Number"><input className={controlClass} name="vehicleNumber" defaultValue={editing?.vehicleNumber || ""} required /></Field>
+        <ValidatedForm key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+          <Field label="Number"><input className={controlClass} name="vehicleNumber" minLength={1} maxLength={30} defaultValue={editing?.vehicleNumber || ""} required /></Field>
           <Field label="Type">
             <select className={controlClass} name="vehicleType" defaultValue={editing?.vehicleType || "BUS"}><option>BUS</option><option>VAN</option></select>
           </Field>
@@ -105,7 +111,7 @@ export default function VehiclesPage() {
             <PrimaryButton>{editing ? "Save changes" : "Add vehicle"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => { setEditing(null); setFormVersion((version) => version + 1); }}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -116,7 +122,7 @@ export default function VehiclesPage() {
             vehicle.vehicleType,
             String(vehicle.capacity),
             vehicle.status,
-            <RowActions key={vehicle.id} onEdit={() => { setEditing(vehicle); setMessage(""); }} onDelete={() => { void removeVehicle(vehicle); }} />,
+            <RowActions key={vehicle.id} onEdit={() => { setEditing(vehicle); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeVehicle(vehicle); }} />,
           ])}
         />
       </Panel>

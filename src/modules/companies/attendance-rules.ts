@@ -6,7 +6,10 @@ export type AttendancePolicy = {
   shiftEnd: string;
   lunchStart: string;
   lunchEnd: string;
+  silenceCountsAsPersonal: boolean;
   lunchCountsAsPersonal: boolean;
+  manualCountsAsPersonal: boolean;
+  pilotOneFloor: boolean;
   reviewWindowHours: number;
   fieldCheckInAllowed: boolean;
   monitoringPolicy: string;
@@ -86,15 +89,21 @@ function lunchOverlapMinutes(startedAt: Date, endedAt: Date, lunchStart: string,
   return minutes;
 }
 
-export function personalMinutes(startedAt: Date, endedAt: Date, policy: Pick<AttendancePolicy, "lunchStart" | "lunchEnd" | "lunchCountsAsPersonal">) {
+export function personalMinutes(startedAt: Date, endedAt: Date, policy: Pick<AttendancePolicy, "lunchStart" | "lunchEnd" | "lunchCountsAsPersonal" | "silenceCountsAsPersonal">) {
   const total = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
-  if (policy.lunchCountsAsPersonal) return total;
-  return Math.max(0, total - lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd));
+  const lunch = lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd);
+  const silence = Math.max(0, total - lunch);
+  const silenceMinutes = policy.silenceCountsAsPersonal === false ? 0 : silence;
+  const lunchMinutes = policy.lunchCountsAsPersonal ? lunch : 0;
+  return silenceMinutes + lunchMinutes;
 }
 
 export function describeGap(policy: AttendancePolicy, startedAt: Date, endedAt: Date) {
+  const total = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+  const lunch = lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd);
   const minutes = personalMinutes(startedAt, endedAt, policy);
   return {
+    kind: lunch > 0 && lunch === total ? "LUNCH" as const : "SILENCE" as const,
     countsAsPersonal: minutes > 0,
     personalMinutes: minutes,
     reviewDeadline: new Date(endedAt.getTime() + policy.reviewWindowHours * 60 * 60 * 1000),
@@ -164,7 +173,10 @@ export function policyFrom(company: Partial<AttendancePolicy> | null | undefined
     shiftEnd: company?.shiftEnd || "18:30",
     lunchStart: company?.lunchStart || "13:00",
     lunchEnd: company?.lunchEnd || "14:00",
+    silenceCountsAsPersonal: company?.silenceCountsAsPersonal !== false,
     lunchCountsAsPersonal: Boolean(company?.lunchCountsAsPersonal),
+    manualCountsAsPersonal: company?.manualCountsAsPersonal !== false,
+    pilotOneFloor: Boolean(company?.pilotOneFloor),
     reviewWindowHours: company?.reviewWindowHours || 48,
     fieldCheckInAllowed: Boolean(company?.fieldCheckInAllowed),
     monitoringPolicy: company?.monitoringPolicy || "",

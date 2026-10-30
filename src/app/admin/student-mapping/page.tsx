@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -27,6 +28,7 @@ export default function StudentMappingPage() {
   const mapped = usePagedRecords<MappedRow>("/api/v1/vehicles?mapped=1");
   const students = useRecords<Student>("/api/v1/students?limit=100");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [vehicleId, setVehicleId] = useState("");
   const [formVersion, setFormVersion] = useState(0);
   const chosen = vehicles.rows.find((vehicle) => vehicle.id === vehicleId);
@@ -40,10 +42,12 @@ export default function StudentMappingPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const selectedVehicleId = String(form.get("vehicleId") || "");
+    setMessage("");
     if (!selectedVehicleId) {
-      setMessage("Choose a vehicle before mapping students.");
+      setFieldErrors({ vehicleId: "Choose a vehicle before mapping students." });
       return;
     }
+    setFieldErrors({});
     try {
       await api(`/api/v1/vehicles/${selectedVehicleId}`, {
         method: "PATCH",
@@ -53,7 +57,9 @@ export default function StudentMappingPage() {
       setMessage("Student mapping saved.");
       await Promise.all([vehicles.reload(), mapped.reload()]);
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the student mapping.");
+      const result = failureOf(caught, "Could not save the student mapping.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -74,7 +80,7 @@ export default function StudentMappingPage() {
       {vehicles.error || mapped.error ? <Notice>{vehicles.error || mapped.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
+        <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
           <Field label="Vehicle">
             <select className={controlClass} name="vehicleId" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} required>
               <option value="">Choose a vehicle</option>
@@ -96,7 +102,7 @@ export default function StudentMappingPage() {
             max={chosen?.capacity || 80}
           />
           <div className="flex items-end"><PrimaryButton>Save mapping</PrimaryButton></div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -111,7 +117,7 @@ export default function StudentMappingPage() {
             row.studentCode,
             <RowActions
               key={`${row.vehicleId}-${row.studentId}`}
-              onEdit={() => { setVehicleId(row.vehicleId); setFormVersion((version) => version + 1); setMessage(""); }}
+              onEdit={() => { setVehicleId(row.vehicleId); setFormVersion((version) => version + 1); setMessage(""); setFieldErrors({}); }}
               onDelete={() => { void removeMapping(row); }}
             />,
           ])}

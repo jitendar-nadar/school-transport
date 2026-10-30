@@ -23,7 +23,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
     companyId: user.companyId,
     fleetId: user.fleetId,
   };
-  if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "EMPLOYEE"].includes(session.role)) {
+  if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "EMPLOYEE"].includes(session.role)) {
     redirect("/login?denied=1");
   }
   return <AdminShell user={session}>{children}</AdminShell>;

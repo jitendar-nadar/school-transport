@@ -74,6 +74,15 @@ const groups = [
     links: [
       { href: "/admin/companies", label: "Companies" },
       { href: "/admin/employees", label: "Employees" },
+      { href: "/admin/employee-cards", label: "Cards and consent" },
+      { href: "/admin/out-of-office", label: "Out of office" },
+      { href: "/admin/attendance", label: "Attendance" },
+    ],
+  },
+  {
+    label: "Company",
+    roles: ["COMPANY_HR"],
+    links: [
       { href: "/admin/attendance", label: "Attendance" },
     ],
   },
@@ -90,6 +99,8 @@ const groups = [
     links: [
       { href: "/admin/fleets", label: "Fleets" },
       { href: "/admin/trucks", label: "Trucks" },
+      { href: "/admin/fleet-map", label: "Live map" },
+      { href: "/admin/fleet-reports", label: "Reports" },
     ],
   },
 ];
@@ -138,7 +149,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
     router.refresh();
   }
 
-  const showSchoolSelect = user.role === "PLATFORM_ADMIN" && !["/admin/companies", "/admin/employees", "/admin/attendance", "/admin/my-day", "/admin/fleets", "/admin/trucks"].some((path) => pathname.startsWith(path));
+  const showSchoolSelect = user.role === "PLATFORM_ADMIN" && !["/admin/companies", "/admin/employees", "/admin/employee-cards", "/admin/out-of-office", "/admin/attendance", "/admin/my-day", "/admin/fleets", "/admin/trucks", "/admin/fleet-map", "/admin/fleet-reports"].some((path) => pathname.startsWith(path));
   const initials = user.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("") || "A";
 
   return (

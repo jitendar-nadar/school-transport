@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useScope } from "@/components/admin/shell";
+import { failureOf, passwordHint, passwordPattern, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -13,6 +14,7 @@ export default function UsersPage() {
   const people = usePagedRecords<Person>("/api/v1/users");
   const { rows, error, reload } = people;
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Person | null>(null);
   const roles = ["SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT"];
 
@@ -20,6 +22,8 @@ export default function UsersPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setMessage("");
+    setFieldErrors({});
     const password = String(form.get("password") || "");
     const body: Record<string, unknown> = {
       name: form.get("name"),
@@ -38,7 +42,9 @@ export default function UsersPage() {
       setMessage("Person saved.");
       await reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save this person.");
+      const result = failureOf(caught, "Could not save this person.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -61,12 +67,12 @@ export default function UsersPage() {
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-          <Field label="Name"><input className={controlClass} name="name" defaultValue={editing?.name || ""} required /></Field>
+        <ValidatedForm key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+          <Field label="Name"><input className={controlClass} name="name" minLength={2} defaultValue={editing?.name || ""} required /></Field>
           <Field label="Email"><input className={controlClass} name="email" type="email" defaultValue={editing?.email || ""} required disabled={Boolean(editing)} /></Field>
-          <Field label="Phone"><input className={controlClass} name="phone" defaultValue={editing?.phone || ""} required /></Field>
-          <Field label={editing ? "New password" : "Temporary password"}>
-            <input className={controlClass} name="password" type="password" minLength={editing ? undefined : 8} required={!editing} />
+          <Field label="Phone"><input className={controlClass} name="phone" minLength={8} maxLength={20} defaultValue={editing?.phone || ""} required /></Field>
+          <Field label={editing ? "New password" : "Temporary password"} name="password">
+            <input className={controlClass} name="password" type="password" minLength={8} pattern={passwordPattern} title={passwordHint} required={!editing} />
             <span className="mt-1 block text-xs font-normal text-slate-500">{editing ? "Leave blank to keep the current password." : "At least 8 characters, with a letter and a number."}</span>
           </Field>
           <Field label="Role">
@@ -78,7 +84,7 @@ export default function UsersPage() {
             <PrimaryButton>{editing ? "Save changes" : "Add person"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => setEditing(null)}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
@@ -90,7 +96,7 @@ export default function UsersPage() {
             person.email,
             person.phone,
             person.status,
-            <RowActions key={person.id} onEdit={() => { setEditing(person); setMessage(""); }} onDelete={() => { void removePerson(person); }} />,
+            <RowActions key={person.id} onEdit={() => { setEditing(person); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removePerson(person); }} />,
           ])}
         />
       </Panel>

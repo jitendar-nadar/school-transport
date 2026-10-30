@@ -24,7 +24,7 @@ const schema = new Schema(
     role: {
       type: String,
       required: true,
-      enum: ["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT", "COMPANY_ADMIN", "FLEET_ADMIN", "EMPLOYEE"],
+      enum: ["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "EMPLOYEE"],
     },
     status: { type: String, enum: ["ACTIVE", "DISABLED"], default: "ACTIVE" },
     refreshTokenSessions: { type: [sessionSchema], default: [] },

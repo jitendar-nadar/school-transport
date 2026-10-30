@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { LocationPicker, defaultMapPoint, type MapPoint } from "@/components/admin/location-picker";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -12,6 +13,7 @@ export default function SchoolsPage() {
   const schools = usePagedRecords<School>("/api/v1/schools", false);
   const { rows, error, reload, user } = schools;
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [point, setPoint] = useState<MapPoint>(defaultMapPoint);
   const [confirmed, setConfirmed] = useState(false);
   const [address, setAddress] = useState("");
@@ -24,13 +26,14 @@ export default function SchoolsPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setMessage("");
     if (!confirmed) {
-      setMessage("Confirm the pin on the map before saving.");
+      setFieldErrors({ location: "Confirm the pin on the map before saving." });
       return;
     }
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    setMessage("");
+    setFieldErrors({});
     try {
       await api("/api/v1/schools", {
         method: "POST",
@@ -52,7 +55,9 @@ export default function SchoolsPage() {
       setMessage("School created.");
       await reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not create the school.");
+      const result = failureOf(caught, "Could not create the school.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -69,9 +74,9 @@ export default function SchoolsPage() {
       {message ? <Notice tone={message.includes("created") ? "ok" : "error"}>{message}</Notice> : null}
       {user.role === "PLATFORM_ADMIN" ? (
         <Panel>
-          <form className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-            <Field label="Name"><input className={controlClass} name="name" required /></Field>
-            <Field label="School code"><input className={controlClass} name="schoolCode" required /></Field>
+          <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+            <Field label="Name"><input className={controlClass} name="name" minLength={2} required /></Field>
+            <Field label="School code"><input className={controlClass} name="schoolCode" minLength={2} required /></Field>
             <Field label="Address">
               <input
                 className={controlClass}
@@ -87,7 +92,7 @@ export default function SchoolsPage() {
               />
             </Field>
             <Field label="Contact email"><input className={controlClass} name="contactEmail" type="email" required /></Field>
-            <Field label="Contact phone"><input className={controlClass} name="contactPhone" required /></Field>
+            <Field label="Contact phone"><input className={controlClass} name="contactPhone" minLength={8} maxLength={20} required /></Field>
             <LocationPicker
               confirmed={confirmed}
               lookupQuery={lookupQuery}
@@ -99,8 +104,8 @@ export default function SchoolsPage() {
               onConfirm={() => setConfirmed(true)}
               onPointChange={movePin}
             />
-            <div className="md:col-span-3"><PrimaryButton disabled={!confirmed}>Create school</PrimaryButton></div>
-          </form>
+            <div className="md:col-span-3"><PrimaryButton>Create school</PrimaryButton></div>
+          </ValidatedForm>
         </Panel>
       ) : null}
       <Panel>

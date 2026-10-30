@@ -21,9 +21,21 @@ type Trip = {
 export default function OverviewPage() {
   const { user } = useScope();
   if (user.role === "COMPANY_ADMIN") return <CompanyHome />;
+  if (user.role === "COMPANY_HR") return <HrHome />;
   if (user.role === "FLEET_ADMIN") return <FleetHome />;
   if (user.role === "EMPLOYEE") return <EmployeeHome />;
   return <SchoolHome />;
+}
+
+function HrHome() {
+  return (
+    <>
+      <PageHeader title="HR review" subtitle="Approve or reject out-of-office gaps, and download the monthly attendance report." />
+      <Panel>
+        <Link className="text-sm text-teal-800" href="/admin/attendance">Open attendance</Link>
+      </Panel>
+    </>
+  );
 }
 
 function EmployeeHome() {

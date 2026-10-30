@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { EMPTY_FIELD_ERRORS } from "@/components/admin/form-error-context";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -46,6 +48,8 @@ export default function BlePage() {
   const students = useRecords<Student>("/api/v1/students?limit=100");
   const [message, setMessage] = useState("");
   const [tone, setTone] = useState<"ok" | "error">("ok");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [errorOwner, setErrorOwner] = useState("");
 
   function report(text: string, nextTone: "ok" | "error" = "ok") {
     setMessage(text);
@@ -56,13 +60,19 @@ export default function BlePage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setErrorOwner("tag");
+    setFieldErrors({});
     try {
       await api("/api/v1/ble-tags", { method: "POST", body: { tagIdentifier: form.get("tagIdentifier"), tagType: "CARD" } });
       formElement.reset();
       report("Card registered.");
       await Promise.all([tags.reload(), assignable.reload()]);
     } catch (caught) {
-      report(caught instanceof Error ? caught.message : "Could not register the card.", "error");
+      const result = failureOf(caught, "Could not register the card.");
+      setErrorOwner("tag");
+      setFieldErrors(result.fields);
+      if (result.message) report(result.message, "error");
+      else setMessage("");
     }
   }
 
@@ -70,12 +80,18 @@ export default function BlePage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setErrorOwner("assign");
+    setFieldErrors({});
     try {
       await api(`/api/v1/ble-tags/${form.get("tagId")}/assign`, { method: "POST", body: { studentId: form.get("studentId") } });
       report("Card assigned.");
       await Promise.all([tags.reload(), assignable.reload()]);
     } catch (caught) {
-      report(caught instanceof Error ? caught.message : "Could not assign the card.", "error");
+      const result = failureOf(caught, "Could not assign the card.");
+      setErrorOwner("assign");
+      setFieldErrors(result.fields);
+      if (result.message) report(result.message, "error");
+      else setMessage("");
     }
   }
 
@@ -130,13 +146,13 @@ export default function BlePage() {
       {message ? <Notice tone={tone}>{message}</Notice> : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel>
-          <form className="grid gap-3" onSubmit={createTag}>
-            <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" required /></Field>
+          <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "tag" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={createTag}>
+            <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" minLength={2} maxLength={64} required /></Field>
             <PrimaryButton>Register card</PrimaryButton>
-          </form>
+          </ValidatedForm>
         </Panel>
         <Panel>
-          <form className="grid gap-3" onSubmit={assign}>
+          <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "assign" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={assign}>
             <Field label="Card">
               <select className={controlClass} name="tagId" required>
                 <option value="">Choose</option>
@@ -150,7 +166,7 @@ export default function BlePage() {
               </select>
             </Field>
             <PrimaryButton>Assign</PrimaryButton>
-          </form>
+          </ValidatedForm>
         </Panel>
       </div>
       <Panel>

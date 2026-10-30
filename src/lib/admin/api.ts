@@ -1,4 +1,4 @@
-import { formatValidationMessage } from "@/lib/validation/messages";
+import { fieldErrorMap, formErrorText } from "@/lib/validation/messages";
 
 type Scope = { role: string; schoolId: string | null };
 
@@ -9,9 +9,12 @@ export function setApiScope(next: Scope) {
 }
 
 export class ApiError extends Error {
-  constructor(message: string) {
+  fields: Record<string, string>;
+
+  constructor(message: string, fields: Record<string, string> = {}) {
     super(message);
     this.name = "ApiError";
+    this.fields = fields;
   }
 }
 
@@ -55,8 +58,10 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
     throw new ApiError("Sign in to continue.");
   }
   if (!response.ok || payload.success === false) {
-    const friendly = formatValidationMessage(payload.error?.details);
-    throw new ApiError(friendly || payload.error?.message || "Something went wrong. Please try again.");
+    const fields = fieldErrorMap(payload.error?.details);
+    const form = formErrorText(payload.error?.details);
+    const message = form || (Object.keys(fields).length ? "" : payload.error?.message || "Something went wrong. Please try again.");
+    throw new ApiError(message, fields);
   }
   return payload as ApiResult<T>;
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { useFieldError } from "@/components/admin/form-error-context";
 import { PAGE_SIZE } from "@/components/admin/use-records";
 
 export function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
@@ -16,11 +17,37 @@ export function Panel({ children }: { children: React.ReactNode }) {
   return <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">{children}</section>;
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function namedControl(children: ReactNode) {
+  let found = "";
+  Children.forEach(children, (child) => {
+    if (found || !isValidElement(child)) return;
+    const name = (child.props as { name?: string }).name;
+    if (typeof name === "string") found = name;
+  });
+  return found;
+}
+
+export function Field({ label, name, error, children }: { label: string; name?: string; error?: string; children: React.ReactNode }) {
+  const fieldName = name || namedControl(children);
+  const contextError = useFieldError(fieldName);
+  const message = error || contextError;
+  const errorId = useId();
+  const control = message
+    ? Children.map(children, (child) => {
+        if (!isValidElement(child)) return child;
+        const childName = (child.props as { name?: string }).name;
+        if (childName !== fieldName) return child;
+        return cloneElement(child as ReactElement<{ "aria-invalid"?: boolean; "aria-describedby"?: string }>, {
+          "aria-invalid": true,
+          "aria-describedby": errorId,
+        });
+      })
+    : children;
   return (
     <label className="block text-sm">
       <span className="mb-1 block font-medium text-slate-700">{label}</span>
-      {children}
+      {control}
+      {message ? <span className="mt-1 block text-sm leading-5 text-red-700" id={errorId}>{message}</span> : null}
     </label>
   );
 }
