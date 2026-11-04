@@ -4,10 +4,11 @@ import { useEffect, useRef } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import type { MapBounds, MapPoint } from "@/components/admin/location-picker";
+import { MapResizeWatcher } from "@/components/admin/map-resize";
 
 const pin = L.divIcon({
   className: "location-pin",
-  html: '<svg class="location-pin-shape" viewBox="0 0 32 42" width="32" height="42" aria-hidden="true" style="display:block;width:32px;height:42px;background:transparent;border:0;border-radius:0;overflow:visible;filter:drop-shadow(0 3px 2px rgba(15,23,42,.35))"><path d="M16 41s14-14.2 14-25A14 14 0 1 0 2 16c0 10.8 14 25 14 25z" fill="#0f766e"/><circle cx="16" cy="15.5" r="5.5" fill="#fff"/></svg>',
+  html: '<svg class="location-pin-shape" viewBox="0 0 32 42" width="32" height="42" aria-hidden="true" style="display:block;width:32px;height:42px;background:transparent;border:0;border-radius:0;overflow:visible;filter:drop-shadow(0 3px 2px rgba(15,23,42,.35))"><path d="M16 41s14-14.2 14-25A14 14 0 1 0 2 16c0 10.8 14 25 14 25z" fill="#0068db"/><circle cx="16" cy="15.5" r="5.5" fill="#fff"/></svg>',
   iconSize: [32, 42],
   iconAnchor: [16, 40],
   popupAnchor: [0, -40],
@@ -118,6 +119,7 @@ export default function LocationMap({
 
   return (
     <MapContainer center={[point.latitude, point.longitude]} className="h-full w-full" maxZoom={19} zoom={13}>
+      <MapResizeWatcher />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         maxZoom={19}

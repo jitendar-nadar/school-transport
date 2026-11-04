@@ -8,14 +8,16 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/utils/geo.test.ts src/lib/validation/messages.test.ts src/modules/trips/state.test.ts src/modules/companies/attendance-rules.test.ts src/modules/transport/tracking-rules.test.ts",
+    "test": "tsx --test src/utils/geo.test.ts src/lib/validation/messages.test.ts src/modules/trips/state.test.ts src/modules/companies/attendance-rules.test.ts src/modules/transport/tracking-rules.test.ts src/modules/ble/ble-import.test.ts src/modules/billing/billing-rules.test.ts",
     "seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "firebase-admin": "^14.5.0",
+    "framer-motion": "^12.43.0",
     "jsonwebtoken": "^9.0.3",
     "leaflet": "^1.9.4",
+    "lucide-react": "^1.65.0",
     "mongoose": "^9.11.2",
     "next": "16.4.0",
     "react": "19.3.0",

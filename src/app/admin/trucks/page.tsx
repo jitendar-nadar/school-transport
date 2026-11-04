@@ -10,15 +10,12 @@ import { useScope } from "@/components/admin/shell";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
-type Fleet = { id: string; name: string };
 type Truck = { id: string; registrationNumber: string; imei: string; certification?: string; status: string };
 type Place = { id: string; name: string; kind: string; address: string; latitude?: number | null; longitude?: number | null; radiusMeters?: number };
 type FleetTrip = { id: string; origin: string; destination: string; status: string; route?: RouteStop[]; truckId?: { id?: string; registrationNumber?: string } | string };
 
 export default function TrucksPage() {
-  const { user } = useScope();
-  const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [fleetId, setFleetId] = useState(user.fleetId || "");
+  const fleetId = useScope().fleetId || "";
   const [truckOptions, setTruckOptions] = useState<Truck[]>([]);
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -35,11 +32,6 @@ export default function TrucksPage() {
   const trucks = usePagedRecords<Truck>(fleetId ? `/api/v1/trucks?fleetId=${fleetId}` : null, false);
   const places = usePagedRecords<Place>(fleetId ? `/api/v1/fleet-geofences?fleetId=${fleetId}` : null, false);
   const trips = usePagedRecords<FleetTrip>(fleetId ? `/api/v1/fleet-trips?fleetId=${fleetId}` : null, false);
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Fleet[]>("/api/v1/fleets?limit=100", { school: false }).then((result) => setFleets(result.data)).catch(() => setFleets([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!fleetId) return;
@@ -128,17 +120,9 @@ export default function TrucksPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Trucks" subtitle="Pair each truck with a tracker IMEI. Places need a map pin so geofence alerts can fire. Search each stop on a trip; the address becomes the map point." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Fleet">
-          <select className={controlClass} value={fleetId} onChange={(event) => setFleetId(event.target.value)}>
-            <option value="">Select a fleet</option>
-            {fleets.map((fleet) => <option key={fleet.id} value={fleet.id}>{fleet.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error || trucks.error || places.error || trips.error ? <Notice>{error || trucks.error || places.error || trips.error}</Notice> : null}
       {message ? <Notice tone={message.endsWith("saved.") || message.endsWith("deleted.") ? "ok" : "error"}>{message}</Notice> : null}
-      {!fleetId ? <Notice>Choose a fleet to add trucks and trips.</Notice> : null}
+      {!fleetId ? <Notice>Choose a fleet in the header to add trucks and trips.</Notice> : null}
       {fleetId ? (
         <>
           <Panel>
@@ -272,8 +256,8 @@ export default function TrucksPage() {
                 trip.route?.length ? `${trip.route.length} points` : "",
                 trip.status,
                 <span key={trip.id} className="flex flex-wrap items-center gap-2">
-                  {trip.status === "PLANNED" ? <button className="text-sm font-medium text-teal-800 hover:underline" type="button" onClick={() => { void setTripStatus(trip, "ACTIVE"); }}>Start</button> : null}
-                  {trip.status === "ACTIVE" ? <button className="text-sm font-medium text-teal-800 hover:underline" type="button" onClick={() => { void setTripStatus(trip, "COMPLETED"); }}>Complete</button> : null}
+                  {trip.status === "PLANNED" ? <button className="text-sm font-medium text-brand-800 hover:underline" type="button" onClick={() => { void setTripStatus(trip, "ACTIVE"); }}>Start</button> : null}
+                  {trip.status === "ACTIVE" ? <button className="text-sm font-medium text-brand-800 hover:underline" type="button" onClick={() => { void setTripStatus(trip, "COMPLETED"); }}>Complete</button> : null}
                   <RowActions onEdit={() => beginTrip(trip)} onDelete={() => { void removeRecord(`/api/v1/fleet-trips/${trip.id}`, "this trip"); }} />
                 </span>,
               ])}

@@ -11,7 +11,6 @@ const FleetPlaybackMap = dynamic(() => import("@/components/admin/fleet-playback
   loading: () => <div className="h-full animate-pulse bg-slate-100" />,
 });
 
-type Fleet = { id: string; name: string };
 type DailyRow = {
   truckId: string;
   registrationNumber: string;
@@ -33,19 +32,12 @@ function today() {
 }
 
 export default function FleetReportsPage() {
-  const { user } = useScope();
-  const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [fleetId, setFleetId] = useState(user.fleetId || "");
+  const fleetId = useScope().fleetId || "";
   const [date, setDate] = useState(today);
   const [rows, setRows] = useState<DailyRow[]>([]);
   const [selected, setSelected] = useState("");
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Fleet[]>("/api/v1/fleets?limit=100", { school: false }).then((result) => setFleets(result.data)).catch(() => setFleets([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!fleetId || !date) return;
@@ -79,20 +71,12 @@ export default function FleetReportsPage() {
     <div className="space-y-5">
       <PageHeader title="Fleet reports" subtitle="Distance, idle time, stoppages, and the route driven that day. Points are kept for the retention window, including uploads that arrive late." />
       <div className="grid gap-3 md:grid-cols-3">
-        {user.role === "PLATFORM_ADMIN" ? (
-          <Field label="Fleet">
-            <select className={controlClass} value={fleetId} onChange={(event) => { setFleetId(event.target.value); setSelected(""); }}>
-              <option value="">Select a fleet</option>
-              {fleets.map((fleet) => <option key={fleet.id} value={fleet.id}>{fleet.name}</option>)}
-            </select>
-          </Field>
-        ) : null}
         <Field label="Date">
           <input className={controlClass} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
       </div>
       {error ? <Notice>{error}</Notice> : null}
-      {!fleetId ? <Notice>Choose a fleet to see the daily report.</Notice> : null}
+      {!fleetId ? <Notice>Choose a fleet in the header to see the daily report.</Notice> : null}
       {fleetId ? (
         <>
           <Panel>
@@ -103,7 +87,7 @@ export default function FleetReportsPage() {
                 `${row.distanceKm} km`,
                 `${row.idleMinutes} min`,
                 String(row.stoppages.length),
-                <button key={row.truckId} className="text-sm font-medium text-teal-800 hover:underline" type="button" onClick={() => setSelected(row.truckId)}>Play route</button>,
+                <button key={row.truckId} className="text-sm font-medium text-brand-800 hover:underline" type="button" onClick={() => setSelected(row.truckId)}>Play route</button>,
               ])}
             />
           </Panel>

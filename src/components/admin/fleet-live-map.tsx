@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
+import { MapResizeWatcher } from "@/components/admin/map-resize";
 
 export type LiveTruck = {
   id: string;
@@ -16,7 +17,7 @@ export type LiveTruck = {
 };
 
 const colors: Record<string, string> = {
-  MOVING: "#0f766e",
+  MOVING: "#0068db",
   IDLE: "#b45309",
   STOPPED: "#475569",
   OFFLINE: "#b91c1c",
@@ -64,6 +65,7 @@ export default function FleetLiveMap({ trucks }: { trucks: LiveTruck[] }) {
 
   return (
     <MapContainer center={[first?.latitude ?? 19.076, first?.longitude ?? 72.877]} className="h-full w-full" zoom={11}>
+      <MapResizeWatcher />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         maxZoom={19}

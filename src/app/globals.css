@@ -1,10 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7fb;
-  --foreground: #142033;
-  --sidebar: #10233f;
-  --accent: #0f766e;
+  --background: #f3f7fc;
+  --foreground: #0b1f36;
+}
+
+@theme {
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9ebff;
+  --color-brand-200: #bcdcff;
+  --color-brand-300: #8ec7ff;
+  --color-brand-400: #4fa8ff;
+  --color-brand-500: #008cfe;
+  --color-brand-600: #0077e8;
+  --color-brand-700: #0068db;
+  --color-brand-800: #0553b0;
+  --color-brand-900: #0a428a;
+  --color-brand-950: #082847;
+
+  --color-aqua-50: #ecfdff;
+  --color-aqua-100: #cff8fe;
+  --color-aqua-200: #a3effb;
+  --color-aqua-300: #62e1f5;
+  --color-aqua-400: #1fcbe6;
+  --color-aqua-500: #01bbe1;
+  --color-aqua-600: #0196bb;
+  --color-aqua-700: #077797;
+  --color-aqua-800: #0d607a;
+  --color-aqua-900: #104f66;
+
+  --color-sidebar: #082847;
+  --color-sidebar-deep: #051a30;
 }
 
 @theme inline {
@@ -25,8 +51,28 @@ body {
 }
 
 ::selection {
-  background: #ccfbf1;
-  color: #134e4a;
+  background: #d9ebff;
+  color: #082847;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body,
+  .bg-background {
+    background: #fff !important;
+  }
+
+  .invoice-document {
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }
 
 button, input, select, textarea {

@@ -5,6 +5,7 @@ const fleetSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     fleetCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
+    category: { type: String, enum: ["TRANSPORT", "TOUR_TRAVEL"], default: "TRANSPORT", index: true },
     address: { type: String, default: "" },
     contactEmail: { type: String, required: true, lowercase: true, trim: true },
     contactPhone: { type: String, required: true, trim: true },

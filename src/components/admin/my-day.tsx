@@ -145,7 +145,7 @@ export function MyDay() {
                 <Field label="Latitude"><input className={controlClass} name="latitude" type="number" min={-90} max={90} step="any" required /></Field>
                 <Field label="Longitude"><input className={controlClass} name="longitude" type="number" min={-180} max={180} step="any" required /></Field>
                 <div className="flex gap-2 md:col-span-3">
-                  <button className="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white" type="submit" value="IN">Phone check-in</button>
+                  <button className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white" type="submit" value="IN">Phone check-in</button>
                   <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm" type="submit" value="OUT">Phone check-out</button>
                 </div>
               </ValidatedForm>

@@ -313,7 +313,7 @@ export function LocationPicker({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button
-          className="rounded-lg border border-teal-800 px-4 py-2 text-sm font-medium text-teal-900 hover:bg-teal-50"
+          className="rounded-lg border border-brand-800 px-4 py-2 text-sm font-medium text-brand-900 hover:bg-brand-50"
           onClick={() => { void confirm(); }}
           type="button"
         >

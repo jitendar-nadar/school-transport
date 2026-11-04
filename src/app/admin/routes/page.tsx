@@ -85,7 +85,7 @@ export default function RoutesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Routes" subtitle="Morning routes use pickup direction. Afternoon routes use drop direction. Stop order follows the selection order." />
+      <PageHeader title="Routes" subtitle="Pickup routes bring students to school. Drop routes take them home. Stop order follows the selection order." />
       {routes.error ? <Notice>{routes.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>

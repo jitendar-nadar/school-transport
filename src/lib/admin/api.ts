@@ -10,11 +10,13 @@ export function setApiScope(next: Scope) {
 
 export class ApiError extends Error {
   fields: Record<string, string>;
+  details: unknown;
 
-  constructor(message: string, fields: Record<string, string> = {}) {
+  constructor(message: string, fields: Record<string, string> = {}, details: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.fields = fields;
+    this.details = details;
   }
 }
 
@@ -61,7 +63,7 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
     const fields = fieldErrorMap(payload.error?.details);
     const form = formErrorText(payload.error?.details);
     const message = form || (Object.keys(fields).length ? "" : payload.error?.message || "Something went wrong. Please try again.");
-    throw new ApiError(message, fields);
+    throw new ApiError(message, fields, payload.error?.details ?? null);
   }
   return payload as ApiResult<T>;
 }

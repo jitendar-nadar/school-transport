@@ -7,13 +7,10 @@ import { useScope } from "@/components/admin/shell";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
-type Company = { id: string; name: string };
 type Employee = { id: string; name: string; employeeCode: string; tagIdentifier?: string; consentGranted?: boolean; workMode?: string };
 
 export default function EmployeeCardsPage() {
-  const { user } = useScope();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyId, setCompanyId] = useState(user.companyId || "");
+  const companyId = useScope().companyId || "";
   const [employeeOptions, setEmployeeOptions] = useState<Employee[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
@@ -21,11 +18,6 @@ export default function EmployeeCardsPage() {
   const [error, setError] = useState("");
   const employees = usePagedRecords<Employee>(companyId ? `/api/v1/employees?companyId=${companyId}` : null, false);
   const selected = employeeOptions.find((employee) => employee.id === selectedId) || null;
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Company[]>("/api/v1/companies?limit=100", { school: false }).then((result) => setCompanies(result.data)).catch(() => setCompanies([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -78,17 +70,9 @@ export default function EmployeeCardsPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Cards and consent" subtitle="Give each employee an office card, mark office or field work, and record written monitoring consent. A card is not read until consent is ticked." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Company">
-          <select className={controlClass} value={companyId} onChange={(event) => { setCompanyId(event.target.value); choose(""); }}>
-            <option value="">Select a company</option>
-            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error || employees.error ? <Notice>{error || employees.error}</Notice> : null}
       {message ? <Notice tone={message.endsWith("saved.") ? "ok" : "error"}>{message}</Notice> : null}
-      {!companyId ? <Notice>Choose a company to manage employee cards.</Notice> : null}
+      {!companyId ? <Notice>Choose a company in the header to manage employee cards.</Notice> : null}
       {companyId ? (
         <>
           <Panel>
@@ -129,7 +113,7 @@ export default function EmployeeCardsPage() {
                 employee.tagIdentifier || "—",
                 employee.workMode === "FIELD" ? "Field" : "Office",
                 employee.consentGranted ? "Yes" : "No",
-                <button key={employee.id} className="text-sm font-medium text-teal-800 hover:underline" type="button" onClick={() => choose(employee.id)}>Edit</button>,
+                <button key={employee.id} className="text-sm font-medium text-brand-800 hover:underline" type="button" onClick={() => choose(employee.id)}>Edit</button>,
               ])}
             />
           </Panel>

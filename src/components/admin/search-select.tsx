@@ -126,7 +126,7 @@ export function SearchSelect({
             <button
               key={person.id}
               type="button"
-              className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-900 transition hover:bg-teal-100"
+              className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-900 transition hover:bg-brand-100"
               onClick={() => removeOption(person.id)}
             >
               {person.name} ×
@@ -145,7 +145,7 @@ export function SearchSelect({
               <li key={person.id} role="option" aria-selected={index === activeIndex}>
                 <button
                   type="button"
-                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${index === activeIndex ? "bg-teal-50" : "hover:bg-slate-50"}`}
+                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${index === activeIndex ? "bg-brand-50" : "hover:bg-slate-50"}`}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     addOption(person.id);

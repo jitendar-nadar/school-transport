@@ -32,7 +32,7 @@ export default function TripsPage() {
             trip.direction,
             `${trip.totalBoarded}/${trip.totalAssignedStudents} boarded · ${trip.totalDropped} dropped`,
             trip.status,
-            <Link key={trip.id} className="text-teal-800 underline" href={`/admin/trips/${trip.id}`}>Open</Link>,
+            <Link key={trip.id} className="text-brand-800 underline" href={`/admin/trips/${trip.id}`}>Open</Link>,
           ])}
         />
       </Panel>

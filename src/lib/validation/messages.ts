@@ -16,6 +16,20 @@ const FIELD_LABELS: Record<string, string> = {
   tagIdentifier: "Card",
   parentIds: "Guardians",
   address: "Address",
+  morningRouteId: "Pickup route",
+  morningStopId: "Pickup stop",
+  afternoonRouteId: "Drop route",
+  afternoonStopId: "Drop stop",
+  gstin: "GSTIN",
+  pan: "PAN",
+  sacCode: "SAC code",
+  stateCode: "State",
+  planId: "Plan",
+  entityId: "Entity",
+  baseFee: "Platform fee",
+  rates: "Rates",
+  startMonth: "First billing month",
+  paidOn: "Payment date",
 };
 
 type Flattened = {

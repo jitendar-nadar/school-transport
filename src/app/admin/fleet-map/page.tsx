@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
-import { DataTable, Field, Notice, PageHeader, Panel, controlClass } from "@/components/admin/ui";
+import { DataTable, Notice, PageHeader, Panel } from "@/components/admin/ui";
 import { useScope } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
 import type { LiveTruck } from "@/components/admin/fleet-live-map";
@@ -12,28 +12,20 @@ const FleetLiveMap = dynamic(() => import("@/components/admin/fleet-live-map"), 
   loading: () => <div className="h-full animate-pulse bg-slate-100" />,
 });
 
-type Fleet = { id: string; name: string };
 type AlertRow = { id: string; type: string; message: string; recordedAt: string; truckId?: { registrationNumber?: string } | string };
 
 const legend = [
-  ["MOVING", "bg-teal-700"],
+  ["MOVING", "bg-brand-700"],
   ["IDLE", "bg-amber-700"],
   ["STOPPED", "bg-slate-600"],
   ["OFFLINE", "bg-red-700"],
 ];
 
 export default function FleetMapPage() {
-  const { user } = useScope();
-  const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [fleetId, setFleetId] = useState(user.fleetId || "");
+  const fleetId = useScope().fleetId || "";
   const [trucks, setTrucks] = useState<LiveTruck[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Fleet[]>("/api/v1/fleets?limit=100", { school: false }).then((result) => setFleets(result.data)).catch(() => setFleets([]));
-  }, [user.role]);
 
   const load = useCallback(async () => {
     if (!fleetId) return;
@@ -60,16 +52,8 @@ export default function FleetMapPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Live map" subtitle="Moving, idle, stopped, and offline come from the latest tracker point. The map refreshes every few seconds." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Fleet">
-          <select className={controlClass} value={fleetId} onChange={(event) => setFleetId(event.target.value)}>
-            <option value="">Select a fleet</option>
-            {fleets.map((fleet) => <option key={fleet.id} value={fleet.id}>{fleet.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error ? <Notice>{error}</Notice> : null}
-      {!fleetId ? <Notice>Choose a fleet to see its trucks.</Notice> : null}
+      {!fleetId ? <Notice>Choose a fleet in the header to see its vehicles.</Notice> : null}
       {fleetId ? (
         <>
           <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-600">

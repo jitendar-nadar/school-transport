@@ -8,6 +8,7 @@ import { api } from "@/lib/admin/api";
 
 type Named = { id: string; name: string; routeCode?: string };
 type Linked = { id?: string; name?: string };
+type RouteRow = Named & { direction?: string; stops?: Array<Linked | string> };
 type Assignment = {
   id: string;
   status: string;
@@ -21,11 +22,23 @@ type Assignment = {
 export default function AssignmentsPage() {
   const assignments = usePagedRecords<Assignment>("/api/v1/transport-assignments");
   const students = useRecords<Named>("/api/v1/students?limit=100");
-  const routes = useRecords<Named & { direction?: string }>("/api/v1/routes?limit=100");
-  const stops = useRecords<Named>("/api/v1/stops?limit=100");
+  const routes = useRecords<RouteRow>("/api/v1/routes?limit=100");
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Assignment | null>(null);
+  const [pickupRouteId, setPickupRouteId] = useState("");
+  const [dropRouteId, setDropRouteId] = useState("");
+
+  function startEditing(item: Assignment | null) {
+    setEditing(item);
+    setPickupRouteId(item?.morningRouteId?.id || "");
+    setDropRouteId(item?.afternoonRouteId?.id || "");
+  }
+
+  function stopsOn(routeId: string) {
+    const route = routes.rows.find((item) => item.id === routeId);
+    return (route?.stops || []).filter((stop): stop is Linked => typeof stop === "object" && Boolean(stop?.id));
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,7 +59,7 @@ export default function AssignmentsPage() {
         },
       });
       formElement.reset();
-      setEditing(null);
+      startEditing(null);
       setMessage("Assignment saved.");
       await assignments.reload();
     } catch (caught) {
@@ -61,7 +74,7 @@ export default function AssignmentsPage() {
     if (!window.confirm(`Delete the assignment for ${name}?`)) return;
     try {
       await api(`/api/v1/transport-assignments/${item.id}`, { method: "DELETE" });
-      if (editing?.id === item.id) setEditing(null);
+      if (editing?.id === item.id) startEditing(null);
       setMessage("Assignment deleted.");
       await assignments.reload();
     } catch (caught) {
@@ -72,9 +85,21 @@ export default function AssignmentsPage() {
   const pickup = routes.rows.filter((route) => route.direction === "PICKUP");
   const drop = routes.rows.filter((route) => route.direction === "DROP");
 
+  function stopSelect(name: string, routeId: string, savedRouteId?: string, savedStopId?: string) {
+    const options = stopsOn(routeId);
+    const initial = routeId && routeId === savedRouteId ? savedStopId || "" : "";
+    const placeholder = !routeId ? "Choose a route first" : options.length ? "None" : "This route has no stops";
+    return (
+      <select key={`${name}-${routeId}`} className={controlClass} name={name} defaultValue={initial} disabled={!routeId}>
+        <option value="">{placeholder}</option>
+        {options.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}
+      </select>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <PageHeader title="Assignments" subtitle="A student can have a different morning pickup and afternoon drop. Later edits do not rewrite old trips." />
+      <PageHeader title="Assignments" subtitle="A student can have a different pickup and drop route and stop. Later edits do not rewrite old trips." />
       {assignments.error ? <Notice>{assignments.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
@@ -85,28 +110,28 @@ export default function AssignmentsPage() {
               {students.rows.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}
             </select>
           </Field>
-          <Field label="Morning route">
-            <select className={controlClass} name="morningRouteId" defaultValue={editing?.morningRouteId?.id || ""}><option value="">None</option>{pickup.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
+          <Field label="Pickup route">
+            <select className={controlClass} name="morningRouteId" value={pickupRouteId} onChange={(event) => setPickupRouteId(event.target.value)}><option value="">None</option>{pickup.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           </Field>
-          <Field label="Morning stop">
-            <select className={controlClass} name="morningStopId" defaultValue={editing?.morningStopId?.id || ""}><option value="">None</option>{stops.rows.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}</select>
+          <Field label="Pickup stop">
+            {stopSelect("morningStopId", pickupRouteId, editing?.morningRouteId?.id, editing?.morningStopId?.id)}
           </Field>
-          <Field label="Afternoon route">
-            <select className={controlClass} name="afternoonRouteId" defaultValue={editing?.afternoonRouteId?.id || ""}><option value="">None</option>{drop.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
+          <Field label="Drop route">
+            <select className={controlClass} name="afternoonRouteId" value={dropRouteId} onChange={(event) => setDropRouteId(event.target.value)}><option value="">None</option>{drop.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select>
           </Field>
-          <Field label="Afternoon stop">
-            <select className={controlClass} name="afternoonStopId" defaultValue={editing?.afternoonStopId?.id || ""}><option value="">None</option>{stops.rows.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}</select>
+          <Field label="Drop stop">
+            {stopSelect("afternoonStopId", dropRouteId, editing?.afternoonRouteId?.id, editing?.afternoonStopId?.id)}
           </Field>
           <div className="flex items-end gap-3">
             <PrimaryButton>{editing ? "Save changes" : "Save assignment"}</PrimaryButton>
-            {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => setEditing(null)}>Cancel</button> : null}
+            {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => startEditing(null)}>Cancel</button> : null}
           </div>
         </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable
           {...listControls(assignments)}
-          columns={["Student", "Morning", "Morning stop", "Afternoon", "Afternoon stop", "Status", ""]}
+          columns={["Student", "Pickup route", "Pickup stop", "Drop route", "Drop stop", "Status", ""]}
           rows={assignments.rows.map((item) => [
             item.studentId?.name || "",
             item.morningRouteId?.name || "—",
@@ -114,7 +139,7 @@ export default function AssignmentsPage() {
             item.afternoonRouteId?.name || "—",
             item.afternoonStopId?.name || "—",
             item.status,
-            <RowActions key={item.id} onEdit={() => { setEditing(item); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeAssignment(item); }} />,
+            <RowActions key={item.id} onEdit={() => { startEditing(item); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeAssignment(item); }} />,
           ])}
         />
       </Panel>

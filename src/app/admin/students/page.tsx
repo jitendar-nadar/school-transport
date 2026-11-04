@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
 import { useScope } from "@/components/admin/shell";
 import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
@@ -25,12 +25,12 @@ type Person = { id: string; name: string; email?: string; role: string };
 type SchoolClass = { id: string; name: string; division: string };
 
 export default function StudentsPage() {
-  const { user, schoolId, schools, setSchoolId } = useScope();
+  const { user, schoolId } = useScope();
   const isPlatformAdmin = user.role === "PLATFORM_ADMIN";
   const students = usePagedRecords<Student>("/api/v1/students");
   const parents = useRecords<Person>("/api/v1/users?limit=100&role=PARENT");
   const classes = useRecords<SchoolClass>("/api/v1/classes?limit=100");
-  const [chosenSchoolId, setChosenSchoolId] = useState(schoolId || "");
+  const chosenSchoolId = schoolId || "";
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formVersion, setFormVersion] = useState(0);
@@ -42,23 +42,14 @@ export default function StudentsPage() {
     classes.rows.filter((item) => item.name === className && item.division).map((item) => item.division),
   )].sort().map((division) => ({ id: division, name: division }));
 
-  useEffect(() => {
-    if (schoolId) setChosenSchoolId(schoolId);
-  }, [schoolId]);
-
-  function chooseSchool(id: string) {
-    setChosenSchoolId(id);
-    setSchoolId(id);
-  }
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
-    const selectedSchoolId = isPlatformAdmin ? String(form.get("schoolId") || "") : schoolId || "";
+    const selectedSchoolId = chosenSchoolId;
     if (!selectedSchoolId) {
-      setFieldErrors({ schoolId: "Select a school before adding a student." });
+      setMessage("Choose a school in the header before adding a student.");
       return;
     }
     const parentIds = form.getAll("parentIds").map(String).filter(Boolean);
@@ -115,24 +106,14 @@ export default function StudentsPage() {
       <PageHeader
         title="Students"
         subtitle={isPlatformAdmin
-          ? "Choose the school in the dropdown. The student is saved against that school. Tracking alerts require parent consent."
+          ? "Students are saved to the school chosen in the header. Tracking alerts require parent consent."
           : "Students are saved to your school. Tracking alerts require parent consent."}
       />
-      {isPlatformAdmin && !chosenSchoolId ? <Notice>Select a school before adding a student.</Notice> : null}
+      {isPlatformAdmin && !chosenSchoolId ? <Notice>Choose a school in the header before adding a student.</Notice> : null}
       {students.error ? <Notice>{students.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
         <ValidatedForm key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
-          {isPlatformAdmin ? (
-            <Field label="School">
-              <select className={controlClass} name="schoolId" required value={chosenSchoolId} onChange={(event) => chooseSchool(event.target.value)}>
-                <option value="">Select a school</option>
-                {schools.map((school) => (
-                  <option key={school.id} value={school.id}>{school.name} · {school.schoolCode}</option>
-                ))}
-              </select>
-            </Field>
-          ) : null}
           <Field label="Name"><input className={controlClass} name="name" minLength={2} maxLength={120} defaultValue={editing?.name || ""} required /></Field>
           <Field label="Student code"><input className={controlClass} name="studentCode" maxLength={40} defaultValue={editing?.studentCode || ""} required /></Field>
           <SearchSelect

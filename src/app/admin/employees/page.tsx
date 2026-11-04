@@ -8,13 +8,10 @@ import { useScope } from "@/components/admin/shell";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
-type Company = { id: string; name: string };
 type Department = { id: string; name: string };
 type Employee = { id: string; name: string; employeeCode: string; email?: string; phone?: string; tagIdentifier?: string; consentGranted?: boolean; workMode?: string; departmentId?: { id?: string; name?: string } | string };
 export default function EmployeesPage() {
-  const { user } = useScope();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyId, setCompanyId] = useState(user.companyId || "");
+  const companyId = useScope().companyId || "";
   const [departments, setDepartments] = useState<Department[]>([]);
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -22,11 +19,6 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState<Employee | null>(null);
   const [error, setError] = useState("");
   const employees = usePagedRecords<Employee>(companyId ? `/api/v1/employees?companyId=${companyId}` : null, false);
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Company[]>("/api/v1/companies?limit=100", { school: false }).then((result) => setCompanies(result.data)).catch(() => setCompanies([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -86,17 +78,9 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Employees" subtitle="Departments and employees belong to the company, not to a school. Assign cards on Cards and consent, and log gaps on Out of office." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Company">
-          <select className={controlClass} value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
-            <option value="">Select a company</option>
-            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error || employees.error ? <Notice>{error || employees.error}</Notice> : null}
       {message ? <Notice tone={message.endsWith("saved.") || message.endsWith("deleted.") ? "ok" : "error"}>{message}</Notice> : null}
-      {!companyId ? <Notice>Choose a company to add departments and employees.</Notice> : null}
+      {!companyId ? <Notice>Choose a company in the header to add departments and employees.</Notice> : null}
       {companyId ? (
         <>
           <Panel>

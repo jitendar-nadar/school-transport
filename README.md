@@ -119,7 +119,7 @@ Authenticated requests use `Authorization: Bearer <accessToken>` or the admin co
 - `GET|POST /api/v1/attendance-gaps`
 - `GET /api/v1/attendance/board`, `PATCH /api/v1/attendance/policy`, `POST /api/v1/attendance/detections`
 - `GET /api/v1/attendance/me`, `POST /api/v1/attendance/field`, `GET /api/v1/attendance/report`
-- `GET|POST /api/v1/fleets` and `PATCH /api/v1/fleets/:id`
+- `GET|POST /api/v1/fleets` and `PATCH /api/v1/fleets/:id` — `category` is `TRANSPORT` (default) or `TOUR_TRAVEL`; filter the list with `?category=`
 - `GET /api/v1/fleets/summary`
 - `GET|POST /api/v1/trucks`
 - `GET|POST /api/v1/fleet-geofences`

@@ -373,19 +373,23 @@ async function assertAssignmentLinks(schoolId: string, input: {
     const student = await Student.findOne({ _id: input.studentId, schoolId });
     if (!student) throw notFound("Student");
   }
-  const checks: Array<[string | null | undefined, "PICKUP" | "DROP" | null]> = [
-    [input.morningRouteId, "PICKUP"],
-    [input.afternoonRouteId, "DROP"],
-  ];
-  for (const [routeId, direction] of checks) {
-    if (!routeId) continue;
-    const route = await Route.findOne({ _id: routeId, schoolId, direction });
-    if (!route) throw new AppError(422, "INVALID_ROUTE", "The route does not match the expected direction.");
-  }
-  for (const stopId of [input.morningStopId, input.afternoonStopId]) {
-    if (!stopId) continue;
-    const stop = await Stop.findOne({ _id: stopId, schoolId });
+  const pairs = [
+    { routeId: input.morningRouteId, stopId: input.morningStopId, direction: "PICKUP", stopField: "morningStopId", label: "pickup" },
+    { routeId: input.afternoonRouteId, stopId: input.afternoonStopId, direction: "DROP", stopField: "afternoonStopId", label: "drop" },
+  ] as const;
+  for (const pair of pairs) {
+    const route = pair.routeId ? await Route.findOne({ _id: pair.routeId, schoolId, direction: pair.direction }).select("stops").lean() : null;
+    if (pair.routeId && !route) throw new AppError(422, "INVALID_ROUTE", "The route does not match the expected direction.");
+    if (!pair.stopId) continue;
+    const stop = await Stop.findOne({ _id: pair.stopId, schoolId }).select("_id").lean();
     if (!stop) throw notFound("Stop");
+    const onRoute = (route?.stops || []).some((id: unknown) => String(id) === String(pair.stopId));
+    if (!onRoute) {
+      const reason = route ? `is not on the chosen ${pair.label} route.` : `needs a ${pair.label} route first.`;
+      throw new AppError(422, "STOP_NOT_ON_ROUTE", `This ${pair.label} stop ${reason}`, {
+        fieldErrors: { [pair.stopField]: [`${pair.label === "pickup" ? "Pickup" : "Drop"} stop ${reason}`] },
+      });
+    }
   }
 }
 
@@ -435,7 +439,7 @@ export async function listAssignments(user: AuthUser, query: { page: number; lim
 export async function createAssignment(user: AuthUser, input: z.infer<typeof assignmentSchema>) {
   const schoolId = requireSchoolId(user, input.schoolId);
   if (!input.morningRouteId && !input.afternoonRouteId) {
-    throw new AppError(422, "ROUTE_REQUIRED", "Choose a morning route, an afternoon route, or both.");
+    throw new AppError(422, "ROUTE_REQUIRED", "Choose a pickup route, a drop route, or both.");
   }
   await assertAssignmentLinks(schoolId, input);
   const existing = await Assignment.findOne({ studentId: input.studentId, status: "ACTIVE" });
@@ -468,12 +472,16 @@ export async function updateAssignment(user: AuthUser, id: string, input: z.infe
   const schoolId = requireSchoolId(user, input.schoolId);
   const assignment = await Assignment.findOne({ _id: id, schoolId });
   if (!assignment) throw notFound("Assignment");
+  const current = (value: unknown) => (value ? String(value) : null);
+  const merged = (next: string | null | undefined, stored: unknown) => (next !== undefined ? next : current(stored));
+  const pickupTouched = input.morningRouteId !== undefined || input.morningStopId !== undefined;
+  const dropTouched = input.afternoonRouteId !== undefined || input.afternoonStopId !== undefined;
   await assertAssignmentLinks(schoolId, {
     studentId: input.studentId,
-    morningRouteId: input.morningRouteId,
-    morningStopId: input.morningStopId,
-    afternoonRouteId: input.afternoonRouteId,
-    afternoonStopId: input.afternoonStopId,
+    morningRouteId: pickupTouched ? merged(input.morningRouteId, assignment.morningRouteId) : null,
+    morningStopId: pickupTouched ? merged(input.morningStopId, assignment.morningStopId) : null,
+    afternoonRouteId: dropTouched ? merged(input.afternoonRouteId, assignment.afternoonRouteId) : null,
+    afternoonStopId: dropTouched ? merged(input.afternoonStopId, assignment.afternoonStopId) : null,
   });
   const before = { status: assignment.status };
   if (input.morningRouteId !== undefined) assignment.morningRouteId = input.morningRouteId;

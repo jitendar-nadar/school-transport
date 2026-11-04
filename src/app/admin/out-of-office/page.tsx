@@ -7,24 +7,16 @@ import { useScope } from "@/components/admin/shell";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
-type Company = { id: string; name: string };
 type Employee = { id: string; name: string };
 type Gap = { id: string; reason: string; status: string; startedAt: string; endedAt: string; employeeId?: { name?: string; employeeCode?: string } };
 
 export default function OutOfOfficePage() {
-  const { user } = useScope();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyId, setCompanyId] = useState(user.companyId || "");
+  const companyId = useScope().companyId || "";
   const [employeeOptions, setEmployeeOptions] = useState<Employee[]>([]);
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const gaps = usePagedRecords<Gap>(companyId ? `/api/v1/attendance-gaps?companyId=${companyId}` : null, false);
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Company[]>("/api/v1/companies?limit=100", { school: false }).then((result) => setCompanies(result.data)).catch(() => setCompanies([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -81,17 +73,9 @@ export default function OutOfOfficePage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Out of office" subtitle="Log time an employee was away from the office by hand. Gaps found from card readings appear here too, and are reviewed on Attendance." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Company">
-          <select className={controlClass} value={companyId} onChange={(event) => { setCompanyId(event.target.value); setMessage(""); setFieldErrors({}); }}>
-            <option value="">Select a company</option>
-            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error || gaps.error ? <Notice>{error || gaps.error}</Notice> : null}
       {message ? <Notice tone={message.endsWith("saved.") || message.endsWith("deleted.") ? "ok" : "error"}>{message}</Notice> : null}
-      {!companyId ? <Notice>Choose a company to log out-of-office gaps.</Notice> : null}
+      {!companyId ? <Notice>Choose a company in the header to log out-of-office gaps.</Notice> : null}
       {companyId ? (
         <>
           <Panel>

@@ -195,7 +195,7 @@ Route:
 
 `direction` is `PICKUP` or `DROP`. Times are `HH:mm`.
 
-Assignment. A morning route uses `morningRouteId` and `morningStopId`. The ride home uses `afternoonRouteId` and `afternoonStopId`.
+Assignment. The pickup route and stop (shown as **Pickup route** and **Pickup stop** in the admin) use `morningRouteId` and `morningStopId`. The drop route and stop use `afternoonRouteId` and `afternoonStopId`.
 
 ```json
 {

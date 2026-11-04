@@ -1,0 +1,101 @@
+import { Building2, Luggage, School, Truck, type LucideIcon } from "lucide-react";
+
+export type EntityType = "SCHOOL" | "COMPANY" | "TRANSPORT" | "TOUR_TRAVEL";
+
+export type EntityRecord = {
+  id: string;
+  name: string;
+  status: string;
+  address?: string;
+  contactEmail: string;
+  contactPhone: string;
+  schoolCode?: string;
+  companyCode?: string;
+  fleetCode?: string;
+  category?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export type EntityConfig = {
+  slug: string;
+  label: string;
+  noun: string;
+  plural: string;
+  icon: LucideIcon;
+  endpoint: string;
+  list: string;
+  codeField: "schoolCode" | "companyCode" | "fleetCode";
+  category?: "TRANSPORT" | "TOUR_TRAVEL";
+  withAdmin: boolean;
+  hint: string;
+};
+
+export const entityTypes: Record<EntityType, EntityConfig> = {
+  SCHOOL: {
+    slug: "school",
+    label: "School",
+    noun: "school",
+    plural: "schools",
+    icon: School,
+    endpoint: "/api/v1/schools",
+    list: "/api/v1/schools",
+    codeField: "schoolCode",
+    withAdmin: false,
+    hint: "Place the school on the map. Add its school admins from People after it is created.",
+  },
+  COMPANY: {
+    slug: "company",
+    label: "Company",
+    noun: "company",
+    plural: "companies",
+    icon: Building2,
+    endpoint: "/api/v1/companies",
+    list: "/api/v1/companies",
+    codeField: "companyCode",
+    withAdmin: true,
+    hint: "Employee attendance is kept apart from schools. The company admin login is created with it.",
+  },
+  TRANSPORT: {
+    slug: "fleet",
+    label: "Fleet",
+    noun: "fleet",
+    plural: "fleets",
+    icon: Truck,
+    endpoint: "/api/v1/fleets",
+    list: "/api/v1/fleets?category=TRANSPORT",
+    codeField: "fleetCode",
+    category: "TRANSPORT",
+    withAdmin: true,
+    hint: "Transport fleets track trucks by GPS. The fleet admin login is created with it.",
+  },
+  TOUR_TRAVEL: {
+    slug: "tour-travel",
+    label: "Tour and travel",
+    noun: "operator",
+    plural: "tour and travel operators",
+    icon: Luggage,
+    endpoint: "/api/v1/fleets",
+    list: "/api/v1/fleets?category=TOUR_TRAVEL",
+    codeField: "fleetCode",
+    category: "TOUR_TRAVEL",
+    withAdmin: true,
+    hint: "Tour and travel operators track their buses and cabs by GPS. The operator admin login is created with it.",
+  },
+};
+
+export const typeOrder: EntityType[] = ["SCHOOL", "COMPANY", "TRANSPORT", "TOUR_TRAVEL"];
+
+export function typeFromSlug(slug: string | null | undefined): EntityType | null {
+  return typeOrder.find((type) => entityTypes[type].slug === slug) ?? null;
+}
+
+export function typeOfFleet(category: string | undefined): EntityType {
+  return category === "TOUR_TRAVEL" ? "TOUR_TRAVEL" : "TRANSPORT";
+}
+
+export function capitalised(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export const entityStatuses = ["TRIAL", "ACTIVE", "SUSPENDED"];

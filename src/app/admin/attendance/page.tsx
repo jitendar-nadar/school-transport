@@ -7,7 +7,6 @@ import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClas
 import { useScope } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
 
-type Company = { id: string; name: string };
 type Policy = {
   gracePeriodMinutes: number;
   shiftStart: string;
@@ -75,10 +74,9 @@ const emptyPolicy: Policy = {
 };
 
 export default function AttendancePage() {
-  const { user } = useScope();
+  const { user, companyId: scopedCompanyId } = useScope();
   const reviewerOnly = user.role === "COMPANY_HR";
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyId, setCompanyId] = useState(user.companyId || "");
+  const companyId = scopedCompanyId || "";
   const [board, setBoard] = useState<Board | null>(null);
   const [policy, setPolicy] = useState<Policy>(emptyPolicy);
   const [report, setReport] = useState<Report | null>(null);
@@ -93,11 +91,6 @@ export default function AttendancePage() {
   const [errorOwner, setErrorOwner] = useState("");
   const [tone, setTone] = useState<"ok" | "error">("error");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (user.role !== "PLATFORM_ADMIN") return;
-    api<Company[]>("/api/v1/companies?limit=100", { school: false }).then((result) => setCompanies(result.data)).catch(() => setCompanies([]));
-  }, [user.role]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -235,17 +228,9 @@ export default function AttendancePage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Attendance" subtitle="Office gateways hear the employee card. The first reading is check-in, a silence past the grace period becomes out-of-office time, and the last reading of the day is check-out. Pilot one floor first: a dead zone creates a false gap." />
-      {user.role === "PLATFORM_ADMIN" ? (
-        <Field label="Company">
-          <select className={controlClass} value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
-            <option value="">Select a company</option>
-            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-          </select>
-        </Field>
-      ) : null}
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone={tone}>{message}</Notice> : null}
-      {!companyId ? <Notice>Choose a company to set attendance rules.</Notice> : null}
+      {!companyId ? <Notice>Choose a company in the header to set attendance rules.</Notice> : null}
       {policy.pilotOneFloor ? <Notice>Pilot is on. Only a floor gateway can hear cards. Turn the pilot off after that floor is tuned.</Notice> : null}
       {companyId && board ? (
         <>
@@ -334,7 +319,7 @@ export default function AttendancePage() {
                 gap.outcome,
                 gap.status === "OPEN" || gap.status === "DISPUTED" ? (
                   <span key={gap.id} className="flex gap-2">
-                    <button className="text-sm text-teal-800" type="button" onClick={() => void review(gap.id, "APPROVE")}>Approve</button>
+                    <button className="text-sm text-brand-800" type="button" onClick={() => void review(gap.id, "APPROVE")}>Approve</button>
                     <button className="text-sm text-red-700" type="button" onClick={() => void review(gap.id, "REJECT")}>Reject</button>
                   </span>
                 ) : gap.reason || "",

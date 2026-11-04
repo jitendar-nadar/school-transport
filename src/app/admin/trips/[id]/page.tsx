@@ -74,7 +74,7 @@ export default function TripDetailPage() {
       {trip?.safetyOverrideReason ? <Notice>Unresolved onboard override: {trip.safetyOverrideReason}</Notice> : null}
       <div className="flex flex-wrap items-center gap-3">
         <Badge>{trip?.status}</Badge>
-        {mapUrl ? <a className="text-sm text-teal-800 underline" href={mapUrl} target="_blank" rel="noreferrer">Open live location</a> : <span className="text-sm text-slate-500">Waiting for a GPS fix</span>}
+        {mapUrl ? <a className="text-sm text-brand-800 underline" href={mapUrl} target="_blank" rel="noreferrer">Open live location</a> : <span className="text-sm text-slate-500">Waiting for a GPS fix</span>}
       </div>
       <Panel>
         <DataTable

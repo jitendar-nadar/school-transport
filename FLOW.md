@@ -28,16 +28,23 @@ Atlas website login is separate from this console. If sign-in says the database 
 
 A platform admin uses **Platform admin**, then picks **ABC Public School** in the header. Later screens use that school. A school admin has no school selector. Their account is already mapped to ABC Public School.
 
+The header picker lists every entity grouped as **Schools**, **Companies**, **Fleets**, and **Tour and travel**. It loads fresh each time it opens, so a newly created entity appears without a reload. It shows the first 6 of each group; type in its search box to find the rest on the server. The picker remembers one school, one company, and one fleet. School screens use the school, company screens use the company, and fleet screens use the fleet. Choosing an entity of a different kind from the current screen opens **Overview** for that entity.
+
 ## 2. Add a school
 
-Only a platform admin can add a school. Open **Schools**.
+Only a platform admin can add a school. In the sidebar, open **Entities → Add entity** and keep **Entity type** on **School**.
 
-1. Enter the name, school code, address, contact email, and phone.
+1. Enter the school name, school code, address, contact email, and phone.
 2. Drag the map pin to the school, or click the map.
-3. Click **Confirm location**. **Create school** stays off until the pin is confirmed.
-4. The new school appears in the list. Change its status there between `TRIAL`, `ACTIVE`, and `SUSPENDED`.
+3. Click **Confirm location**, then **Create school**. Saving is refused until the pin is confirmed.
+4. You return to **Entities → All entities** on the **Schools** tab, with a message that the school was created. Change its status there between `TRIAL`, `ACTIVE`, and `SUSPENDED`.
 
-A school admin can open **Schools** and see their own school. They cannot create another one.
+**Entities** is the one place a platform admin manages every organisation. It is a sidebar submenu with two pages:
+
+- **All entities** (`/admin/entities`) is the list. Tabs switch between **Schools**, **Companies**, **Fleets**, and **Tour and travel operators**, and the tab is kept in the address (`?type=school`, `company`, `fleet`, `tour-travel`). Each row has a status dropdown and an **Edit** link. **Add school** (or company, fleet, operator) opens the add page on that type.
+- **Add entity** (`/admin/entities/new`) is the create form. The **Entity type** dropdown switches the form. A school has a map pin and no admin login; the other three ask for the admin’s name, email, and password.
+
+**Edit** opens `/admin/entities/<type>/<id>`. It changes the name, code, address, contact email, phone, and status; a school can also move its map pin, and a fleet can switch between **Fleet** and **Tour and travel**. The admin login is not edited here. A code that another entity already uses is refused on the code field. There is no delete. The old `/admin/schools` address now opens **Entities**.
 
 ## 3. Set up one school
 
@@ -49,6 +56,8 @@ Walk the sidebar in this order. Each step depends on the one before it. A platfo
    - School admin: there is no school dropdown. The student is saved to their school.
    - Platform admin: choose the school in the student form. **Add student** stays off until a school is selected. The list and guardians switch to that school.
 4. **BLE cards** — assign a card to a student. Change the student or the status on any card, including an inactive one. A card read later identifies that student only while the card is active. Gate and tour checks use this same card.
+   - Register cards one at a time with **Single card**, or many at once with **Bulk upload (CSV)**. Download the template from the bulk tab. Each row has a `tagIdentifier` and an optional `studentCode`; a row with a student code registers the card and assigns it to that student. Up to 1000 cards per file.
+   - The page checks the file before upload: missing or short identifiers, and a card or student repeated in the file. The server then checks cards that are already registered, student codes that are not in this school or not active, and students who already have an active card. If any row has a problem, the list shows the row number and reason, and no cards are saved. Fix the file and upload it again.
 5. **Gates** — name each entrance, such as Main gate. A later gate read uses two nodes: outside, then inside, means entry. The console stores the gate. It does not decide direction yet.
 6. **Vehicles** — bus or van, with the driver and attendant who may run it.
 7. **Student mapping** — choose that vehicle and the students who ride it. A student is listed on one vehicle.
@@ -103,9 +112,9 @@ Only the driver or attendant assigned to `BUS-4` can run this. The admin watches
 
 ## 7. Ride home
 
-Repeat section 4 with an afternoon route (`DROP`) and an afternoon assignment. The states are the same. The alerts are boarding for home, approaching the home stop, and dropped at home.
+Repeat section 4 with a drop route (`DROP`) and set the **Drop route** and **Drop stop** on the student's assignment. The states are the same. The alerts are boarding for home, approaching the home stop, and dropped at home.
 
-The seed has the morning route only. Add the return route, its stops, and Aarav’s afternoon assignment before that second trip can start.
+The seed has the pickup route only. Add the drop route, its stops, and Aarav’s drop route and stop before that second trip can start.
 
 ## 8. Safety checks
 
@@ -115,7 +124,7 @@ The seed has the morning route only. Add the return route, its stops, and Aarav�
 
 ## 9. School gates, classes, and tours
 
-Stay signed in as the school admin, or as the platform admin with **ABC Public School** selected. The header school selector stays on school screens and is hidden on company and fleet screens.
+Stay signed in as the school admin, or as the platform admin with **ABC Public School** selected. On company and fleet screens the header picker shows the chosen company or fleet instead.
 
 1. Open **Classes**. Add class `4` and division `A`. The row is stored on the school.
 2. Open **Gates**. Add `Main gate`.
@@ -127,15 +136,15 @@ Stay signed in as the school admin, or as the platform admin with **ABC Public S
 
 Company records never appear on **Students**, **Vehicles**, or **Trips**.
 
-1. Sign in as the platform admin. Open **Companies**. The school selector is hidden on this screen.
+1. Sign in as the platform admin. Open **Entities → Add entity** and choose **Company** as the entity type. A company admin still sees their own company under **Companies**.
 2. Enter the company name, code, address, contact email, and phone.
 3. Enter the company admin’s name, email, and password. The password needs at least 8 characters, a letter, and a number.
-4. Click **Create company**. The company appears as `TRIAL`, and that admin can sign in. If the admin email or company code is already used, nothing is saved.
-5. Change status in the list to `ACTIVE` or `SUSPENDED`. A suspended company cannot sign in.
-6. Open **Employees** and select that company.
+4. Click **Create company**. You return to the **Companies** tab, where the company appears as `TRIAL`, and that admin can sign in. If the admin email or company code is already used, nothing is saved.
+5. Change status in the list to `ACTIVE` or `SUSPENDED`, or click **Edit** to change its details. A suspended company cannot sign in.
+6. Choose that company in the header picker, then open **Employees**.
 7. Add a department first. The employee form cannot be saved without one.
 8. Add an employee: department, employee code, and name. Email and phone are optional. The employee is stored on the company, not as a student.
-9. Open **Out of office**, select the company, and log a gap for that employee. The end time must be after the start time. The row stays `OPEN` until the review window passes. Lunch inside the company lunch hours is not personal time unless the rules say so.
+9. Open **Out of office** and log a gap for that employee. The end time must be after the start time. The row stays `OPEN` until the review window passes. Lunch inside the company lunch hours is not personal time unless the rules say so.
 10. Sign out and sign in with the company admin email. **Overview** shows department, employee, and open-gap counts for that company only. **Companies** lists only their company. **Employees** has no company dropdown.
 
 ## 11. Truck fleet
@@ -144,11 +153,13 @@ Fleet records never appear on school buses or company employees. A truck uses a 
 
 ### Set up the fleet
 
-1. Sign in as the platform admin. Open **Fleets**.
+1. Sign in as the platform admin. Open **Entities → Add entity** and choose **Fleet** as the entity type. A fleet admin still sees their own fleet under **Fleets**.
 2. Enter the fleet name, code, address, contact email, phone, and the fleet admin’s name, email, and password.
-3. Click **Create fleet**. The fleet appears as `TRIAL`. A duplicate fleet code or admin email saves nothing.
+3. Click **Create fleet**. You return to the **Fleets** tab, where the fleet appears as `TRIAL`. A duplicate fleet code or admin email saves nothing.
+
+A tour and travel operator is a fleet with the category `TOUR_TRAVEL`. Choose **Tour and travel** as the entity type and fill the same fields. Its admin signs in as a fleet admin and gets the same vehicles, live map, and reports. Fleet and operator codes share one list, so an operator cannot reuse a fleet’s code.
 4. Set status to `ACTIVE` or `SUSPENDED`. A suspended fleet cannot sign in.
-5. Open **Trucks** and select that fleet. A fleet admin lands here with no fleet dropdown.
+5. Choose that fleet in the header picker, then open **Trucks**. A fleet admin lands here with no picker.
 6. Add the vehicle number, the tracker IMEI, and the tracker standard.
    - **Standard GPS** is a normal tracker.
    - **AIS-140** records that this vehicle needs an AIS-140-certified device. The console stores that choice. It does not certify the hardware.
@@ -227,3 +238,45 @@ Stay signed in as the company admin. Open **Attendance**.
 7. The company admin approves or rejects it. Approved time stays on duty. Rejected time becomes personal time. An open gap that nobody reviews becomes personal time only after the review window.
 8. After the shift end plus the grace period, the last card reading is check-out. **Load report** shows working hours, personal hours, pending review, late arrivals, and early exits. **Download CSV** is the payroll export.
 9. Field staff, when phone check-in is allowed and their work mode is Field, check in and out from **My day** with latitude and longitude. That path does not use a gateway.
+
+## 13. Billing
+
+Only a platform admin manages billing. In the sidebar, open **Billing**. It has four pages: **Subscriptions**, **Invoices**, **Plans**, and **Settings**. Amounts are in rupees with GST at 18%.
+
+### Set up once
+
+1. **Settings**: enter your legal name, address, state, GSTIN, PAN, optional SAC code, the invoice number prefix (default `PT`), payment terms in days (default 15), and the bank or UPI details printed on invoices. The GSTIN must start with the chosen state's code. Invoices cannot be issued until this is saved. Each invoice keeps a copy of these details, so later edits do not change old invoices.
+2. **Plans**: a plan is a price list for **Schools**, **Companies**, or **Fleets**. It has a monthly base fee plus a monthly rate per counted unit. A rate of 0 is not charged.
+
+| Entity | Counted units |
+| --- | --- |
+| School | Active students, buses and vans (not inactive), active BLE cards |
+| Company | Active employees, office gateways |
+| Fleet and tour/travel operator | Trucks and vehicles (not inactive) |
+
+### Add a subscription
+
+**Subscriptions → Add subscription**. Choose the entity type and the organisation (organisations that already have a subscription are not listed). Choosing a plan fills in its prices, and you can change them for this customer only. Choose the cycle (**Monthly**, **Quarterly**, or **Yearly**) and the first month to bill. Bill-to name, address, and email are filled from the organisation; add the state (place of supply) and the customer's GSTIN if they have one.
+
+The subscription page shows today's counts and an estimate of the next invoice. **Paused** and **Cancelled** subscriptions issue no invoices. The first billing month cannot change once an invoice exists.
+
+### Issue invoices
+
+A period is invoiced only after it ends, using the counts at the moment the invoice is issued. A quarterly cycle charges 3 months of each price and a yearly cycle 12. The seller state and the place of supply decide the tax: the same state gives CGST 9% + SGST 9%, different states give IGST 18%. Numbers look like `PT/2026-27/0001` and restart each financial year (April to March).
+
+- **Issue invoice** on a subscription issues its next ended period.
+- **Issue all due invoices** on **Subscriptions** catches every active subscription up to its last ended period.
+
+### Get paid
+
+**Invoices** shows the unpaid and overdue totals and every invoice, with tabs for **Unpaid**, **Overdue**, **Paid**, and **Void**. Open an invoice to:
+
+- **Print or save as PDF**: the browser print dialog prints only the invoice.
+- **Record payment**: date, method (bank transfer, UPI, cheque, cash, other), and the UTR or cheque reference. The full amount is recorded.
+- **Void invoice**: with a reason. Only the latest invoice of a subscription can be voided, so the period can be issued again.
+
+An unpaid invoice past its due date is **Overdue**.
+
+### What the school, company, or fleet admin sees
+
+Under **Account → Billing** (`/admin/my-billing`) they see their plan and prices, today's counts, the next-invoice estimate, unpaid and overdue totals, and their invoices, which they can open and print. They cannot change anything. When an invoice is overdue, a red banner across the top of every page tells them the amount and links to **Billing**. Platform admins do not see the banner.

@@ -1,11 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { BleBulkUpload } from "@/components/admin/ble-bulk-upload";
 import { EMPTY_FIELD_ERRORS } from "@/components/admin/form-error-context";
 import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
+import { TAG_MAX_LENGTH, TAG_MIN_LENGTH } from "@/modules/ble/ble-import";
 
 type StudentRef = { id?: string; name?: string; studentCode?: string; className?: string; division?: string };
 type Tag = {
@@ -50,6 +52,7 @@ export default function BlePage() {
   const [tone, setTone] = useState<"ok" | "error">("ok");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [errorOwner, setErrorOwner] = useState("");
+  const [mode, setMode] = useState<"single" | "bulk">("single");
 
   function report(text: string, nextTone: "ok" | "error" = "ok") {
     setMessage(text);
@@ -146,10 +149,35 @@ export default function BlePage() {
       {message ? <Notice tone={tone}>{message}</Notice> : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel>
-          <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "tag" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={createTag}>
-            <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" minLength={2} maxLength={64} required /></Field>
-            <PrimaryButton>Register card</PrimaryButton>
-          </ValidatedForm>
+          <div className="mb-4 inline-flex rounded-lg bg-slate-100 p-1" role="group" aria-label="How to register cards">
+            {([["single", "Single card"], ["bulk", "Bulk upload (CSV)"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mode === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => {
+                  setMode(value);
+                  setFieldErrors({});
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === "single" ? (
+            <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "tag" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={createTag}>
+              <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" minLength={TAG_MIN_LENGTH} maxLength={TAG_MAX_LENGTH} required /></Field>
+              <PrimaryButton>Register card</PrimaryButton>
+            </ValidatedForm>
+          ) : (
+            <BleBulkUpload
+              onImported={async (summary) => {
+                report(summary);
+                await Promise.all([tags.reload(), assignable.reload(), students.reload()]);
+              }}
+            />
+          )}
         </Panel>
         <Panel>
           <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "assign" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={assign}>

@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { z } from "zod";
 import { requireSchoolId } from "@/lib/auth/guard";
 import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
@@ -8,6 +9,7 @@ import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
 import { objectIdSchema } from "@/lib/validation/common";
 import { escapeRegex, serialize } from "@/utils/serialize";
+import { MAX_IMPORT_ROWS, validateCardRows, type CardImportProblem } from "@/modules/ble/ble-import";
 
 export const createTagSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -22,6 +24,18 @@ export const updateTagSchema = z.object({
   batteryStatus: z.enum(["UNKNOWN", "GOOD", "LOW", "REPLACE"]).optional(),
   status: z.enum(["ACTIVE", "UNASSIGNED", "INACTIVE", "LOST", "RETIRED"]).optional(),
   schoolId: objectIdSchema.optional(),
+});
+
+export const importTagsSchema = z.object({
+  schoolId: objectIdSchema.optional(),
+  rows: z
+    .array(z.object({
+      row: z.number().int().min(0),
+      tagIdentifier: z.string().trim().max(200),
+      studentCode: z.string().trim().max(200).optional().default(""),
+    }))
+    .min(1, "The file has no cards.")
+    .max(MAX_IMPORT_ROWS, `Upload ${MAX_IMPORT_ROWS} cards or fewer at a time.`),
 });
 
 export const assignTagSchema = z.object({
@@ -81,6 +95,85 @@ export async function createTag(user: AuthUser, input: z.infer<typeof createTagS
     }
     throw error;
   }
+}
+
+export async function importTags(user: AuthUser, input: z.infer<typeof importTagsSchema>) {
+  const schoolId = requireSchoolId(user, input.schoolId);
+  const rows = input.rows.map((row) => ({ row: row.row, tagIdentifier: row.tagIdentifier, studentCode: row.studentCode }));
+  const problems: CardImportProblem[] = validateCardRows(rows);
+  const flag = (row: { row: number; tagIdentifier: string }, message: string) => problems.push({ row: row.row, tagIdentifier: row.tagIdentifier, message });
+
+  const identifiers = rows.map((row) => row.tagIdentifier).filter(Boolean);
+  const existing = await BleTag.find({ $or: [{ tagIdentifier: { $in: identifiers } }, { aliasIdentifiers: { $in: identifiers } }] })
+    .select("tagIdentifier aliasIdentifiers")
+    .lean();
+  const taken = new Set(existing.flatMap((tag) => [tag.tagIdentifier, ...(tag.aliasIdentifiers || [])]));
+
+  const codes = [...new Set(rows.map((row) => row.studentCode).filter(Boolean))];
+  const students = codes.length
+    ? await Student.find({ schoolId, studentCode: { $in: codes } }).select("_id studentCode status").lean()
+    : [];
+  const studentByCode = new Map(students.map((student) => [student.studentCode as string, student]));
+  const carded = students.length
+    ? await BleTag.find({ studentId: { $in: students.map((student) => student._id) }, status: "ACTIVE" }).select("studentId").lean()
+    : [];
+  const studentsWithCard = new Set(carded.map((tag) => String(tag.studentId)));
+
+  for (const row of rows) {
+    if (row.tagIdentifier && taken.has(row.tagIdentifier)) flag(row, "This card is already registered.");
+    if (!row.studentCode) continue;
+    const student = studentByCode.get(row.studentCode);
+    if (!student) flag(row, `No student with code ${row.studentCode} in this school.`);
+    else if (student.status !== "ACTIVE") flag(row, `Student ${row.studentCode} is not active.`);
+    else if (studentsWithCard.has(String(student._id))) flag(row, `Student ${row.studentCode} already has an active card. Mark that card inactive first.`);
+  }
+
+  if (problems.length) {
+    problems.sort((a, b) => a.row - b.row);
+    const count = new Set(problems.map((problem) => problem.row)).size;
+    throw new AppError(422, "IMPORT_INVALID", `${count} ${count === 1 ? "row needs" : "rows need"} fixing. No cards were saved.`, { rows: problems });
+  }
+
+  const assignedAt = new Date();
+  const documents = rows.map((row) => {
+    const student = row.studentCode ? studentByCode.get(row.studentCode) : undefined;
+    return {
+      _id: new Types.ObjectId(),
+      schoolId,
+      tagIdentifier: row.tagIdentifier,
+      aliasIdentifiers: [],
+      tagType: "CARD",
+      batteryStatus: "UNKNOWN",
+      status: student ? "ACTIVE" : "UNASSIGNED",
+      studentId: student?._id ?? null,
+      assignedAt: student ? assignedAt : null,
+    };
+  });
+  try {
+    await BleTag.insertMany(documents, { ordered: true });
+  } catch (error) {
+    await BleTag.deleteMany({ _id: { $in: documents.map((document) => document._id) } });
+    if (isDuplicateKey(error)) {
+      throw new AppError(409, "TAG_EXISTS", "One of these cards was registered while the file was uploading. No cards were saved. Upload the file again.");
+    }
+    throw error;
+  }
+
+  const assigned = documents.filter((document) => document.studentId);
+  if (assigned.length) {
+    await Student.bulkWrite(assigned.map((document) => ({
+      updateOne: { filter: { _id: document.studentId, schoolId }, update: { $set: { bleTagId: document._id } } },
+    })));
+  }
+  await writeAudit({
+    schoolId,
+    actorId: user.id,
+    action: "BLE_TAGS_IMPORTED",
+    entityType: "School",
+    entityId: schoolId,
+    after: { created: documents.length, assigned: assigned.length, tagIdentifiers: identifiers },
+  });
+  return { created: documents.length, assigned: assigned.length };
 }
 
 export async function updateTag(user: AuthUser, id: string, input: z.infer<typeof updateTagSchema>) {

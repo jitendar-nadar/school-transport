@@ -10,3 +10,4 @@ import "@/models/attendance";
 import "@/models/carrier";
 import "@/models/school-records";
 import "@/models/platform-events";
+import "@/models/billing";
