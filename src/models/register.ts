@@ -11,3 +11,4 @@ import "@/models/carrier";
 import "@/models/school-records";
 import "@/models/platform-events";
 import "@/models/billing";
+import "@/models/agency";

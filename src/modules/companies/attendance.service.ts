@@ -7,6 +7,7 @@ import { AttendanceDay } from "@/models/attendance";
 import { AttendanceGap, Company, Employee } from "@/models/company";
 import { DetectionEvent, Gateway } from "@/models/platform-events";
 import { User } from "@/models/user";
+import { assertEmployeeCardUsable, linkEmployeeCard } from "@/modules/agencies/agency-card.service";
 import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
 import { serialize } from "@/utils/serialize";
@@ -199,9 +200,11 @@ export async function updateEmployeeAccess(user: AuthUser, employeeId: string, i
   const employee = await Employee.findOne({ _id: employeeId, companyId });
   if (!employee) throw notFound("Employee");
   const tag = input.tagIdentifier.trim();
+  const previousTag = employee.tagIdentifier || "";
   if (tag) {
     const other = await Employee.findOne({ tagIdentifier: tag, _id: { $ne: employee._id } }).lean();
     if (other) throw new AppError(409, "CONFLICT", "This card is already assigned to someone else.");
+    if (tag !== previousTag) await assertEmployeeCardUsable(companyId, employee._id, tag);
   }
   employee.tagIdentifier = tag;
   employee.workMode = input.workMode;
@@ -238,6 +241,7 @@ export async function updateEmployeeAccess(user: AuthUser, employeeId: string, i
     if (!employee.email) employee.email = email;
   }
   await employee.save();
+  await linkEmployeeCard(companyId, employee._id, previousTag, tag);
   return serialize(employee.toObject());
 }
 
@@ -326,7 +330,7 @@ export async function ingestGatewayDetection(input: z.infer<typeof gatewayIngest
   const gateway = await Gateway.findOne({ _id: input.gatewayId, ownerType: "COMPANY", kind: "OFFICE" }).lean();
   if (!gateway) throw notFound("Gateway");
   return recordDetection(
-    { id: "", schoolId: null, companyId: String(gateway.ownerId), fleetId: null, employeeId: null, name: "Gateway", email: "", phone: "", role: ROLES.COMPANY_ADMIN, status: "ACTIVE" },
+    { id: "", schoolId: null, companyId: String(gateway.ownerId), fleetId: null, agencyId: null, employeeId: null, name: "Gateway", email: "", phone: "", role: ROLES.COMPANY_ADMIN, status: "ACTIVE" },
     { companyId: String(gateway.ownerId), tagIdentifier: input.tagIdentifier, gatewayId: input.gatewayId, occurredAt: input.occurredAt, rssi: input.rssi },
   );
 }

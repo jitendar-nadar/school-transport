@@ -70,9 +70,7 @@ export function EntityForm({ type, entity, onTypeChange, onSaved }: EntityFormPr
     }
     if (editing) {
       body.status = form.get("status");
-      if (config.category) body.category = form.get("category");
     } else {
-      if (config.category) body.category = config.category;
       if (config.withAdmin) {
         body.adminName = form.get("adminName");
         body.adminEmail = form.get("adminEmail");
@@ -86,8 +84,7 @@ export function EntityForm({ type, entity, onTypeChange, onSaved }: EntityFormPr
       } else {
         await api(config.endpoint, { method: "POST", school: false, body });
       }
-      const savedType = config.category && editing ? (body.category === "TOUR_TRAVEL" ? "TOUR_TRAVEL" : "TRANSPORT") : type;
-      onSaved({ type: savedType, name: String(body.name) });
+      onSaved({ type, name: String(body.name) });
     } catch (caught) {
       const result = failureOf(caught, editing ? `Could not save the ${config.noun}.` : `Could not create the ${config.noun}.`);
       const fields = { ...result.fields };
@@ -141,21 +138,11 @@ export function EntityForm({ type, entity, onTypeChange, onSaved }: EntityFormPr
         <Field label="Contact email"><input className={controlClass} name="contactEmail" type="email" defaultValue={entity?.contactEmail} required /></Field>
         <Field label="Contact phone"><input className={controlClass} name="contactPhone" minLength={8} maxLength={20} defaultValue={entity?.contactPhone} required /></Field>
         {editing ? (
-          <>
-            <Field label="Status">
-              <select className={controlClass} name="status" defaultValue={entity?.status}>
-                {entityStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
-            </Field>
-            {config.category ? (
-              <Field label="Category">
-                <select className={controlClass} name="category" defaultValue={config.category}>
-                  <option value="TRANSPORT">Fleet</option>
-                  <option value="TOUR_TRAVEL">Tour and travel</option>
-                </select>
-              </Field>
-            ) : null}
-          </>
+          <Field label="Status">
+            <select className={controlClass} name="status" defaultValue={entity?.status}>
+              {entityStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </Field>
         ) : config.withAdmin ? (
           <>
             <Field label="Admin name"><input className={controlClass} name="adminName" minLength={2} required /></Field>

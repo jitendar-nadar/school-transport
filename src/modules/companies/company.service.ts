@@ -4,6 +4,7 @@ import { requireCompanyId } from "@/lib/auth/guard";
 import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
 import { objectIdSchema, passwordSchema } from "@/lib/validation/common";
+import { BleTag } from "@/models/ble-tag";
 import { AttendanceGap, Company, Department, Employee } from "@/models/company";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
@@ -204,6 +205,7 @@ export async function deleteEmployee(user: AuthUser, id: string, companyId?: str
   const employee = await Employee.findOne({ _id: id, companyId: tenant });
   if (!employee) throw notFound("Employee");
   if (employee.userId) await User.deleteOne({ _id: employee.userId });
+  await BleTag.updateMany({ employeeId: employee._id }, { $set: { employeeId: null, status: "UNASSIGNED", assignedAt: null } });
   await AttendanceGap.deleteMany({ companyId: tenant, employeeId: employee._id });
   await employee.deleteOne();
   return { deleted: true };

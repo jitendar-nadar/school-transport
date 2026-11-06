@@ -17,7 +17,7 @@ function NewEntity() {
   if (user.role !== "PLATFORM_ADMIN") {
     return (
       <div className="space-y-5">
-        <PageHeader title="Add entity" subtitle="Create a school, company, fleet, or tour and travel operator." />
+        <PageHeader title="Add entity" subtitle="Create a school, company, fleet, or transport agency." />
         <Notice>Only platform administrators manage entities.</Notice>
       </div>
     );

@@ -72,7 +72,10 @@ export async function listTags(
     page: query.page,
     limit: query.limit,
     sort: { tagIdentifier: 1 },
-    populate: [{ path: "studentId", select: "name studentCode className division" }],
+    populate: [
+      { path: "studentId", select: "name studentCode className division" },
+      { path: "agencyId", select: "name" },
+    ],
   });
   return { items: result.items.map((item) => serialize(item)), meta: result.meta };
 }
@@ -268,6 +271,9 @@ export async function deleteTag(user: AuthUser, id: string, schoolId?: string) {
   const tenant = requireSchoolId(user, schoolId);
   const tag = await BleTag.findOne({ _id: id, schoolId: tenant });
   if (!tag) throw notFound("BLE tag");
+  if (tag.agencyId) {
+    throw new AppError(409, "AGENCY_CARD", "This card belongs to the transport agency. Remove the student or mark it inactive instead; the agency takes its cards back.");
+  }
   if (tag.studentId) {
     await Student.updateOne({ _id: tag.studentId, schoolId: tenant, bleTagId: tag._id }, { $set: { bleTagId: null } });
   }

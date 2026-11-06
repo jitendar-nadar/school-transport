@@ -1,18 +1,19 @@
 # Operations flow
 
-Three paths in one console. School, company, and transport each keep their own records. A student is never an employee, and a school-bus trip is never a truck trip.
+Four kinds of organisation in one console. School, company, and fleet each keep their own records. A student is never an employee, and a school-bus trip is never a truck trip. A transport agency supplies buses, vans, and BLE cards to schools and companies.
 
-Seed data covers the school path. Company and fleet accounts are created in the console. Password for every demo account, and the password you should use when creating a company or fleet admin: `ChangeMe123!`
+Seed data covers the school path. Company, fleet, and agency accounts are created in the console. Password for every demo account, and the password you should use when creating a company, fleet, or agency admin: `ChangeMe123!`
 
 | Who | Email | What they do |
 | --- | --- | --- |
 | School admin | `schooladmin@abc.school` | Runs one school. Students are saved to that school with no school dropdown. |
-| Platform admin | `admin@schooltransport.local` | Adds schools, companies, and fleets, then works inside the one they select. |
+| Platform admin | `admin@schooltransport.local` | Adds schools, companies, fleets, and transport agencies, manages billing, then works inside the one they select. |
 | Driver | `driver@abc.school` | Starts the school-bus trip and sends GPS through the mobile API. |
 | Attendant | `attendant@abc.school` | Confirms boarding and drop-off through the mobile API. |
 | Parent | `parent@abc.school` | Sees their child, alerts, and live location through the mobile API. |
 | Company admin | Created with the company | Runs one company: departments, employees, and out-of-office gaps. |
 | Fleet admin | Created with the fleet | Runs one fleet: trucks and trackers, places, trips, the live map, and daily reports. |
+| Agency admin | Created with the transport agency | Runs one agency: its buses and vans, which client each one serves, and the BLE cards it hands out. |
 
 The admin console is in this app. Driver and parent screens are not. They call the same `/api/v1` API. Request and response details are in [API.md](API.md).
 
@@ -28,7 +29,7 @@ Atlas website login is separate from this console. If sign-in says the database 
 
 A platform admin uses **Platform admin**, then picks **ABC Public School** in the header. Later screens use that school. A school admin has no school selector. Their account is already mapped to ABC Public School.
 
-The header picker lists every entity grouped as **Schools**, **Companies**, **Fleets**, and **Tour and travel**. It loads fresh each time it opens, so a newly created entity appears without a reload. It shows the first 6 of each group; type in its search box to find the rest on the server. The picker remembers one school, one company, and one fleet. School screens use the school, company screens use the company, and fleet screens use the fleet. Choosing an entity of a different kind from the current screen opens **Overview** for that entity.
+The header picker lists every entity grouped as **Schools**, **Companies**, **Fleets**, and **Transport agencies**. It loads fresh each time it opens, so a newly created entity appears without a reload. It shows the first 6 of each group; type in its search box to find the rest on the server. The picker remembers one of each kind. School screens use the school, company screens use the company, fleet screens use the fleet, and agency screens use the agency. Choosing an entity of a different kind from the current screen opens **Overview** for that entity.
 
 ## 2. Add a school
 
@@ -41,10 +42,10 @@ Only a platform admin can add a school. In the sidebar, open **Entities → Add 
 
 **Entities** is the one place a platform admin manages every organisation. It is a sidebar submenu with two pages:
 
-- **All entities** (`/admin/entities`) is the list. Tabs switch between **Schools**, **Companies**, **Fleets**, and **Tour and travel operators**, and the tab is kept in the address (`?type=school`, `company`, `fleet`, `tour-travel`). Each row has a status dropdown and an **Edit** link. **Add school** (or company, fleet, operator) opens the add page on that type.
+- **All entities** (`/admin/entities`) is the list. Tabs switch between **Schools**, **Companies**, **Fleets**, and **Transport agencies**, and the tab is kept in the address (`?type=school`, `company`, `fleet`, `agency`). Each row has a status dropdown and an **Edit** link. **Add school** (or company, fleet, agency) opens the add page on that type.
 - **Add entity** (`/admin/entities/new`) is the create form. The **Entity type** dropdown switches the form. A school has a map pin and no admin login; the other three ask for the admin’s name, email, and password.
 
-**Edit** opens `/admin/entities/<type>/<id>`. It changes the name, code, address, contact email, phone, and status; a school can also move its map pin, and a fleet can switch between **Fleet** and **Tour and travel**. The admin login is not edited here. A code that another entity already uses is refused on the code field. There is no delete. The old `/admin/schools` address now opens **Entities**.
+**Edit** opens `/admin/entities/<type>/<id>`. It changes the name, code, address, contact email, phone, and status; a school can also move its map pin. An agency's edit page also has **Manage clients**. The admin login is not edited here. A code that another entity already uses is refused on the code field. There is no delete. The old `/admin/schools` address now opens **Entities**.
 
 ## 3. Set up one school
 
@@ -124,7 +125,7 @@ The seed has the pickup route only. Add the drop route, its stops, and Aarav’s
 
 ## 9. School gates, classes, and tours
 
-Stay signed in as the school admin, or as the platform admin with **ABC Public School** selected. On company and fleet screens the header picker shows the chosen company or fleet instead.
+Stay signed in as the school admin, or as the platform admin with **ABC Public School** selected. On company, fleet, and agency screens the header picker shows the chosen company, fleet, or agency instead.
 
 1. Open **Classes**. Add class `4` and division `A`. The row is stored on the school.
 2. Open **Gates**. Add `Main gate`.
@@ -156,8 +157,6 @@ Fleet records never appear on school buses or company employees. A truck uses a 
 1. Sign in as the platform admin. Open **Entities → Add entity** and choose **Fleet** as the entity type. A fleet admin still sees their own fleet under **Fleets**.
 2. Enter the fleet name, code, address, contact email, phone, and the fleet admin’s name, email, and password.
 3. Click **Create fleet**. You return to the **Fleets** tab, where the fleet appears as `TRIAL`. A duplicate fleet code or admin email saves nothing.
-
-A tour and travel operator is a fleet with the category `TOUR_TRAVEL`. Choose **Tour and travel** as the entity type and fill the same fields. Its admin signs in as a fleet admin and gets the same vehicles, live map, and reports. Fleet and operator codes share one list, so an operator cannot reuse a fleet’s code.
 4. Set status to `ACTIVE` or `SUSPENDED`. A suspended fleet cannot sign in.
 5. Choose that fleet in the header picker, then open **Trucks**. A fleet admin lands here with no picker.
 6. Add the vehicle number, the tracker IMEI, and the tracker standard.
@@ -246,15 +245,20 @@ Only a platform admin manages billing. In the sidebar, open **Billing**. It has 
 ### Set up once
 
 1. **Settings**: enter your legal name, address, state, GSTIN, PAN, optional SAC code, the invoice number prefix (default `PT`), payment terms in days (default 15), and the bank or UPI details printed on invoices. The GSTIN must start with the chosen state's code. Invoices cannot be issued until this is saved. Each invoice keeps a copy of these details, so later edits do not change old invoices.
-2. **Plans**: a plan is a price list for **Schools**, **Companies**, or **Fleets**. It has a monthly base fee plus a monthly rate per counted unit. A rate of 0 is not charged.
+2. **Plans**: a plan is a price list for **Schools**, **Companies**, **Fleets**, or **Transport agencies**. It has a monthly base fee plus a monthly rate per counted unit. A rate of 0 is not charged.
 
 | Entity | Counted units |
 | --- | --- |
-| School | Active students, buses and vans (not inactive), active BLE cards |
+| School | Active students, its own buses and vans (not inactive), its own active BLE cards |
 | Company | Active employees, office gateways |
-| Fleet and tour/travel operator | Trucks and vehicles (not inactive) |
+| Fleet | Trucks and vehicles (not inactive) |
+| Transport agency | Agency buses and vans (not inactive), issued BLE cards (active and given to a person) |
+
+Buses, vans, and cards supplied by an agency are billed to the agency, not to the school.
 
 ### Add a subscription
+
+**Subscriptions** has tabs for **All**, **Schools**, **Companies**, **Fleets**, and **Transport agencies**. Under the subscription list, **Not subscribed yet** lists every organisation of that type with no subscription, marked **No subscription**. Its **Add subscription** link opens the form with that organisation already chosen and its bill-to details filled in.
 
 **Subscriptions → Add subscription**. Choose the entity type and the organisation (organisations that already have a subscription are not listed). Choosing a plan fills in its prices, and you can change them for this customer only. Choose the cycle (**Monthly**, **Quarterly**, or **Yearly**) and the first month to bill. Bill-to name, address, and email are filled from the organisation; add the state (place of supply) and the customer's GSTIN if they have one.
 
@@ -277,6 +281,45 @@ A period is invoiced only after it ends, using the counts at the moment the invo
 
 An unpaid invoice past its due date is **Overdue**.
 
-### What the school, company, or fleet admin sees
+### What the school, company, fleet, or agency admin sees
 
 Under **Account → Billing** (`/admin/my-billing`) they see their plan and prices, today's counts, the next-invoice estimate, unpaid and overdue totals, and their invoices, which they can open and print. They cannot change anything. When an invoice is overdue, a red banner across the top of every page tells them the amount and links to **Billing**. Platform admins do not see the banner.
+
+## 14. Transport agencies
+
+A transport agency is a bus or van operator that supplies its vehicles to schools and companies. It also holds BLE cards and hands them to students or employees for tracking. One vehicle can serve several clients, for example a school in the morning and a company in the evening.
+
+### Set up the agency
+
+1. Sign in as the platform admin. Open **Entities → Add entity** and choose **Transport agency**. Enter the name, agency code, address, contact email, phone, and the agency admin's name, email, and password. A duplicate code or admin email saves nothing.
+2. Choose the agency in the header picker and open **Transport agency → Clients**, or click **Manage clients** on the agency's edit page. Pick the schools and companies it serves and save. Only a platform admin changes this list. A client cannot be removed while an agency vehicle still serves it or one of the agency's cards is still with it.
+3. The agency admin signs in and lands on **Overview**: client schools and companies, vehicles, cards issued, and cards in stock.
+
+### Vehicles
+
+Open **Agency vehicles**. Add the vehicle number, bus or van, seats, and the **Clients** it serves. Only the agency's own clients are listed.
+
+- For each school it serves, the school's **Vehicles** page gets a matching vehicle marked **Supplied by** the agency. The school assigns the driver and attendant and uses it on routes, student mapping, and trips exactly like its own bus. Number, type, seats, and status are set by the agency and are read-only for the school.
+- A vehicle number that the school already uses for its own bus is refused.
+- Removing a school from a vehicle is refused while one of that school's active routes uses it, or while a trip is running. The school's copy then shows **No longer supplied** and cannot start trips. The school can delete it.
+- Students from every school it serves share its seats. A school's **Student mapping** shows how many seats other schools use (without naming them or their students) and refuses more than are left. The agency's list shows the total students mapped.
+- Fewer seats than the students mapped to it across all its schools is refused. Changing the status away from active is refused during a trip.
+- A vehicle can be deleted only after it serves no clients.
+- A company sees the vehicles serving it under **Vehicles from transport agencies** on its **Overview**. Employee commute trips are not part of this release.
+
+### BLE cards
+
+Open **Agency cards**.
+
+1. **Add cards**, up to 1000 at a time, in one of two ways:
+   - **Type or paste**: card ids one per line or separated by commas.
+   - **Bulk upload (CSV)**: download the **Template**, put one card per row in the `tagIdentifier` column, and choose or drop the file. The page checks the file first and lists each problem by row, such as a missing, too short, or repeated id. Other columns are ignored.
+
+   A card id already registered anywhere, or already used by an employee, is refused with the reason, and nothing is saved. New cards are **In stock**.
+2. **Give a card**: choose the card, the client, and optionally the student or employee. With a person the card becomes active for them. Without one it is handed to the client, who maps it later. A student with an active card, or an employee with a different card, is refused.
+3. **Take back** returns a card to stock and clears it from the person. A lost or retired card cannot be given again. Only a card in stock can be deleted.
+
+The client can map a handed-over card too:
+
+- A school sees agency cards on **BLE cards** with **Supplied by**, assigns them to students the usual way, and cannot delete them.
+- A company's **Cards and consent** page suggests the agency's waiting cards in the card id box.

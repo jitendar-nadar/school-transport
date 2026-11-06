@@ -4,6 +4,7 @@ import { paginate } from "@/lib/mongodb/paginate";
 import { objectIdSchema } from "@/lib/validation/common";
 import { BillingPlan, BillingSettings, Invoice, InvoiceCounter, Subscription } from "@/models/billing";
 import { BleTag } from "@/models/ble-tag";
+import { AgencyVehicle, TransportAgency } from "@/models/agency";
 import { FleetAccount, Truck } from "@/models/carrier";
 import { Company, Employee } from "@/models/company";
 import { Vehicle } from "@/models/fleet";
@@ -138,6 +139,10 @@ export const subscriptionQuerySchema = z.object({
   entityType: z.enum(billingEntityTypes).optional(),
 });
 
+export const unsubscribedQuerySchema = z.object({
+  entityType: z.enum(billingEntityTypes).optional(),
+});
+
 export const planQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -190,7 +195,7 @@ function checkGstin(value: string, state: string) {
   }
 }
 
-const entityModels = { SCHOOL: School, COMPANY: Company, FLEET: FleetAccount };
+const entityModels = { SCHOOL: School, COMPANY: Company, FLEET: FleetAccount, AGENCY: TransportAgency };
 
 async function findEntity(entityType: BillingEntityType, entityId: string) {
   const entity = await entityModels[entityType].findById(entityId).select("name").lean<{ name: string } | null>();
@@ -202,10 +207,17 @@ export async function countUnits(entityType: BillingEntityType, entityId: unknow
   if (entityType === "SCHOOL") {
     const [students, vehicles, cards] = await Promise.all([
       Student.countDocuments({ schoolId: entityId, status: "ACTIVE" }),
-      Vehicle.countDocuments({ schoolId: entityId, status: { $ne: "INACTIVE" } }),
-      BleTag.countDocuments({ schoolId: entityId, status: "ACTIVE" }),
+      Vehicle.countDocuments({ schoolId: entityId, status: { $ne: "INACTIVE" }, agencyId: null }),
+      BleTag.countDocuments({ schoolId: entityId, status: "ACTIVE", agencyId: null }),
     ]);
     return { STUDENTS: students, SCHOOL_VEHICLES: vehicles, BLE_CARDS: cards };
+  }
+  if (entityType === "AGENCY") {
+    const [vehicles, cards] = await Promise.all([
+      AgencyVehicle.countDocuments({ agencyId: entityId, status: { $ne: "INACTIVE" } }),
+      BleTag.countDocuments({ agencyId: entityId, status: "ACTIVE", $or: [{ studentId: { $ne: null } }, { employeeId: { $ne: null } }] }),
+    ]);
+    return { AGENCY_VEHICLES: vehicles, AGENCY_CARDS: cards };
   }
   if (entityType === "COMPANY") {
     const [employees, gateways] = await Promise.all([
@@ -335,6 +347,31 @@ export async function listSubscriptions(user: AuthUser, query: z.infer<typeof su
     }),
     meta: result.meta,
   };
+}
+
+const entityCodeFields: Record<BillingEntityType, string> = { SCHOOL: "schoolCode", COMPANY: "companyCode", FLEET: "fleetCode", AGENCY: "agencyCode" };
+
+export async function listUnsubscribed(user: AuthUser, query: z.infer<typeof unsubscribedQuerySchema>) {
+  requirePlatform(user);
+  const types = query.entityType ? [query.entityType] : billingEntityTypes;
+  const groups = await Promise.all(types.map(async (entityType) => {
+    const subscribed = await Subscription.distinct("entityId", { entityType });
+    const codeField = entityCodeFields[entityType];
+    const entities = await entityModels[entityType]
+      .find({ _id: { $nin: subscribed } })
+      .select(`name status ${codeField}`)
+      .sort({ name: 1 })
+      .limit(500)
+      .lean<Array<Record<string, unknown> & { _id: unknown; name: string; status?: string }>>();
+    return entities.map((entity) => ({
+      entityType,
+      entityId: String(entity._id),
+      name: entity.name,
+      code: String(entity[codeField] ?? ""),
+      status: entity.status ?? "",
+    }));
+  }));
+  return groups.flat();
 }
 
 async function subscriptionDoc(id: string) {
@@ -516,6 +553,7 @@ function tenantOf(user: AuthUser): Tenant | null {
   if (user.role === ROLES.SCHOOL_ADMIN && user.schoolId) return { entityType: "SCHOOL", entityId: user.schoolId };
   if (user.role === ROLES.COMPANY_ADMIN && user.companyId) return { entityType: "COMPANY", entityId: user.companyId };
   if (user.role === ROLES.FLEET_ADMIN && user.fleetId) return { entityType: "FLEET", entityId: user.fleetId };
+  if (user.role === ROLES.AGENCY_ADMIN && user.agencyId) return { entityType: "AGENCY", entityId: user.agencyId };
   return null;
 }
 

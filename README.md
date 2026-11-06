@@ -1,6 +1,6 @@
 # School Transport
 
-Multi-tenant backend and administration console for BLE cards and GPS tracking. One application serves schools, companies, and truck fleets. Each group has its own tables.
+Multi-tenant backend and administration console for BLE cards and GPS tracking. One application serves schools, companies, truck fleets, and the transport agencies that supply buses, vans, and BLE cards to schools and companies. Each group has its own tables.
 
 The admin console and REST API live in this Next.js app. Driver and parent mobile apps are separate React Native clients that call the same `/api/v1` API.
 
@@ -35,14 +35,15 @@ The seed password defaults to `ChangeMe123!`. Change it before any shared deploy
 
 | Role | Access |
 | --- | --- |
-| Platform admin | Schools, companies, and fleets. School screens use the selected school. Company and fleet screens send their own id. |
+| Platform admin | Schools, companies, fleets, and transport agencies. School screens use the selected school. Company, fleet, and agency screens send their own id. |
 | School admin | People, students, classes, BLE cards, gates, vehicles, routes, stops, assignments, trips, tours, alerts |
 | Company admin | Their company, its departments, employees, and out-of-office gaps |
 | Fleet admin | Their fleet, its trucks, tracker IMEIs, places, and planned truck trips |
+| Agency admin | Their transport agency, its buses and vans, which clients each serves, and the BLE cards it hands to students and employees |
 | Driver / attendant | Assigned school vehicle, trip start, BLE batches, boarding, drop-off, GPS, offline sync |
 | Parent | Own children, trip status, notification history, authorized live location |
 
-School queries use `schoolId`. Company queries use `companyId`. Fleet queries use `fleetId`. A client-supplied tenant id is ignored unless the caller is a platform admin. Company and fleet admins are created with the company or fleet. They are not added on the school People screen.
+School queries use `schoolId`. Company queries use `companyId`. Fleet queries use `fleetId`. Agency queries use `agencyId`. A client-supplied tenant id is ignored unless the caller is a platform admin. Company and fleet admins are created with the company or fleet. They are not added on the school People screen.
 
 ## Trip safety
 
@@ -119,8 +120,12 @@ Authenticated requests use `Authorization: Bearer <accessToken>` or the admin co
 - `GET|POST /api/v1/attendance-gaps`
 - `GET /api/v1/attendance/board`, `PATCH /api/v1/attendance/policy`, `POST /api/v1/attendance/detections`
 - `GET /api/v1/attendance/me`, `POST /api/v1/attendance/field`, `GET /api/v1/attendance/report`
-- `GET|POST /api/v1/fleets` and `PATCH /api/v1/fleets/:id` — `category` is `TRANSPORT` (default) or `TOUR_TRAVEL`; filter the list with `?category=`
+- `GET|POST /api/v1/fleets` and `PATCH /api/v1/fleets/:id`
 - `GET /api/v1/fleets/summary`
+- `GET|POST /api/v1/agencies`, `GET|PATCH /api/v1/agencies/:id`, `GET /api/v1/agencies/summary`
+- `GET|PUT /api/v1/agency-clients` and `GET /api/v1/agency-clients/options` — the schools and companies an agency serves; only a platform admin changes them
+- `GET|POST /api/v1/agency-vehicles`, `PATCH|DELETE /api/v1/agency-vehicles/:id`, `GET /api/v1/agency-vehicles/supplied` for a company
+- `GET|POST /api/v1/agency-cards`, `PATCH|DELETE /api/v1/agency-cards/:id`, `POST /api/v1/agency-cards/:id/issue`, `POST /api/v1/agency-cards/:id/return`, `GET /api/v1/agency-cards/people`, `GET /api/v1/agency-cards/company`
 - `GET|POST /api/v1/trucks`
 - `GET|POST /api/v1/fleet-geofences`
 - `GET|POST /api/v1/fleet-trips`

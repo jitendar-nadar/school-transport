@@ -20,15 +20,17 @@ export type SessionUser = {
   schoolId: string | null;
   companyId: string | null;
   fleetId: string | null;
+  agencyId: string | null;
 };
 
-export type ScopedEntity = { id: string; name: string; category?: string };
+export type ScopedEntity = { id: string; name: string };
 
 export type StoredScope = {
   active: EntityKind | null;
   SCHOOL: ScopedEntity | null;
   COMPANY: ScopedEntity | null;
   FLEET: ScopedEntity | null;
+  AGENCY: ScopedEntity | null;
 };
 
 type ScopeValue = {
@@ -36,6 +38,7 @@ type ScopeValue = {
   schoolId: string | null;
   companyId: string | null;
   fleetId: string | null;
+  agencyId: string | null;
   scope: StoredScope;
   selectEntity: (kind: EntityKind, entity: ScopedEntity) => void;
 };
@@ -55,7 +58,7 @@ function subscribeStorage(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-const emptyScope: StoredScope = { active: null, SCHOOL: null, COMPANY: null, FLEET: null };
+const emptyScope: StoredScope = { active: null, SCHOOL: null, COMPANY: null, FLEET: null, AGENCY: null };
 
 function storedScopeText() {
   return window.localStorage.getItem("st-scope") ?? `legacy:${window.localStorage.getItem("st-school-id") ?? ""}`;
@@ -101,6 +104,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   const schoolId = user.schoolId || scope.SCHOOL?.id || null;
   const companyId = user.companyId || scope.COMPANY?.id || null;
   const fleetId = user.fleetId || scope.FLEET?.id || null;
+  const agencyId = user.agencyId || scope.AGENCY?.id || null;
   setApiScope({ role: user.role, schoolId });
 
   useEffect(() => {
@@ -123,10 +127,11 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
       schoolId,
       companyId,
       fleetId,
+      agencyId,
       scope,
       selectEntity: rememberEntity,
     }),
-    [user, schoolId, companyId, fleetId, scope],
+    [user, schoolId, companyId, fleetId, agencyId, scope],
   );
 
   function chooseEntity(kind: EntityKind, entity: ScopedEntity) {
@@ -142,7 +147,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
   }
 
   const currentKind = scopeForPath(pathname) ?? scope.active;
-  const tenantAdmin = user.role === "SCHOOL_ADMIN" || user.role === "COMPANY_ADMIN" || user.role === "FLEET_ADMIN";
+  const tenantAdmin = ["SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "AGENCY_ADMIN"].includes(user.role);
   const initials = user.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("") || "A";
 
   return (
@@ -225,7 +230,7 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
           </header>
           {tenantAdmin ? <OverdueBanner /> : null}
           <main className="px-4 py-6 md:px-6 md:py-7 print:p-0">
-            <motion.div key={`${pathname}|${schoolId}|${companyId}|${fleetId}`} variants={pageVariants} initial="hidden" animate="show">
+            <motion.div key={`${pathname}|${schoolId}|${companyId}|${fleetId}|${agencyId}`} variants={pageVariants} initial="hidden" animate="show">
               {children}
             </motion.div>
           </main>

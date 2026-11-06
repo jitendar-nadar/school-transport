@@ -1,6 +1,6 @@
-import { Building2, Luggage, School, Truck, type LucideIcon } from "lucide-react";
+import { Building2, BusFront, School, Truck, type LucideIcon } from "lucide-react";
 
-export type EntityType = "SCHOOL" | "COMPANY" | "TRANSPORT" | "TOUR_TRAVEL";
+export type EntityType = "SCHOOL" | "COMPANY" | "TRANSPORT" | "AGENCY";
 
 export type EntityRecord = {
   id: string;
@@ -12,7 +12,7 @@ export type EntityRecord = {
   schoolCode?: string;
   companyCode?: string;
   fleetCode?: string;
-  category?: string;
+  agencyCode?: string;
   latitude?: number | null;
   longitude?: number | null;
 };
@@ -25,8 +25,7 @@ export type EntityConfig = {
   icon: LucideIcon;
   endpoint: string;
   list: string;
-  codeField: "schoolCode" | "companyCode" | "fleetCode";
-  category?: "TRANSPORT" | "TOUR_TRAVEL";
+  codeField: "schoolCode" | "companyCode" | "fleetCode" | "agencyCode";
   withAdmin: boolean;
   hint: string;
 };
@@ -63,35 +62,29 @@ export const entityTypes: Record<EntityType, EntityConfig> = {
     plural: "fleets",
     icon: Truck,
     endpoint: "/api/v1/fleets",
-    list: "/api/v1/fleets?category=TRANSPORT",
+    list: "/api/v1/fleets",
     codeField: "fleetCode",
-    category: "TRANSPORT",
     withAdmin: true,
     hint: "Transport fleets track trucks by GPS. The fleet admin login is created with it.",
   },
-  TOUR_TRAVEL: {
-    slug: "tour-travel",
-    label: "Tour and travel",
-    noun: "operator",
-    plural: "tour and travel operators",
-    icon: Luggage,
-    endpoint: "/api/v1/fleets",
-    list: "/api/v1/fleets?category=TOUR_TRAVEL",
-    codeField: "fleetCode",
-    category: "TOUR_TRAVEL",
+  AGENCY: {
+    slug: "agency",
+    label: "Transport agency",
+    noun: "agency",
+    plural: "transport agencies",
+    icon: BusFront,
+    endpoint: "/api/v1/agencies",
+    list: "/api/v1/agencies",
+    codeField: "agencyCode",
     withAdmin: true,
-    hint: "Tour and travel operators track their buses and cabs by GPS. The operator admin login is created with it.",
+    hint: "A bus or van agency supplies vehicles to schools and companies, and gives BLE cards to their students and employees. The agency admin login is created with it; link its clients after.",
   },
 };
 
-export const typeOrder: EntityType[] = ["SCHOOL", "COMPANY", "TRANSPORT", "TOUR_TRAVEL"];
+export const typeOrder: EntityType[] = ["SCHOOL", "COMPANY", "TRANSPORT", "AGENCY"];
 
 export function typeFromSlug(slug: string | null | undefined): EntityType | null {
   return typeOrder.find((type) => entityTypes[type].slug === slug) ?? null;
-}
-
-export function typeOfFleet(category: string | undefined): EntityType {
-  return category === "TOUR_TRAVEL" ? "TOUR_TRAVEL" : "TRANSPORT";
 }
 
 export function capitalised(text: string) {

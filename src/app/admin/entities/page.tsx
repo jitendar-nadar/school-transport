@@ -68,7 +68,7 @@ function EntitiesList() {
   if (user.role !== "PLATFORM_ADMIN") {
     return (
       <div className="space-y-5">
-        <PageHeader title="Entities" subtitle="Schools, companies, fleets, and tour and travel operators." />
+        <PageHeader title="Entities" subtitle="Schools, companies, fleets, and transport agencies." />
         <Notice>Only platform administrators manage entities.</Notice>
       </div>
     );
@@ -76,7 +76,7 @@ function EntitiesList() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Entities" subtitle="Every organisation on the platform: schools, companies, transport fleets, and tour and travel operators." />
+      <PageHeader title="Entities" subtitle="Every organisation on the platform: schools, companies, truck fleets, and the bus and van agencies that serve schools and companies." />
       {saved && savedName ? <Notice tone="ok">{savedName} was {saved === "updated" ? "updated" : "created"}.</Notice> : null}
       {error ? <Notice>{error}</Notice> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">

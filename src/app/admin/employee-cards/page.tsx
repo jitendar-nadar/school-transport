@@ -8,6 +8,7 @@ import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
 
 type Employee = { id: string; name: string; employeeCode: string; tagIdentifier?: string; consentGranted?: boolean; workMode?: string };
+type AgencyCard = { id: string; tagIdentifier: string; agencyName: string };
 
 export default function EmployeeCardsPage() {
   const companyId = useScope().companyId || "";
@@ -16,6 +17,7 @@ export default function EmployeeCardsPage() {
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [agencyCards, setAgencyCards] = useState<AgencyCard[]>([]);
   const employees = usePagedRecords<Employee>(companyId ? `/api/v1/employees?companyId=${companyId}` : null, false);
   const selected = employeeOptions.find((employee) => employee.id === selectedId) || null;
 
@@ -29,6 +31,11 @@ export default function EmployeeCardsPage() {
     }).catch((caught: unknown) => {
       if (!ignore) setError(caught instanceof Error ? caught.message : "Could not load employees.");
     });
+    api<AgencyCard[]>(`/api/v1/agency-cards/company?companyId=${companyId}`, { school: false })
+      .then((result) => {
+        if (!ignore) setAgencyCards(result.data);
+      })
+      .catch(() => undefined);
     return () => {
       ignore = true;
     };
@@ -86,7 +93,14 @@ export default function EmployeeCardsPage() {
                   {employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                 </select>
               </Field>
-              <Field label="Card id"><input className={controlClass} name="tagIdentifier" minLength={2} maxLength={64} defaultValue={selected?.tagIdentifier || ""} /></Field>
+              <Field label="Card id">
+                <input className={controlClass} name="tagIdentifier" minLength={2} maxLength={64} defaultValue={selected?.tagIdentifier || ""} list={agencyCards.length ? "agency-cards" : undefined} />
+              </Field>
+              {agencyCards.length ? (
+                <datalist id="agency-cards">
+                  {agencyCards.map((card) => <option key={card.id} value={card.tagIdentifier}>{`From ${card.agencyName}`}</option>)}
+                </datalist>
+              ) : null}
               <Field label="Work">
                 <select className={controlClass} name="workMode" defaultValue={selected?.workMode || "OFFICE"}>
                   <option value="OFFICE">Office</option>
@@ -97,6 +111,9 @@ export default function EmployeeCardsPage() {
               <Field label="Login email"><input className={controlClass} name="loginEmail" type="email" /></Field>
               <Field label="Login password"><input className={controlClass} name="loginPassword" type="password" minLength={8} pattern={passwordPattern} title={passwordHint} /></Field>
               <p className="text-sm text-slate-500 md:col-span-3">Fill the login email and password only to create or reset the employee’s My day sign-in.</p>
+              {agencyCards.length ? (
+                <p className="text-sm text-slate-500 md:col-span-3">{agencyCards.length} {agencyCards.length === 1 ? "card" : "cards"} from your transport agency {agencyCards.length === 1 ? "is" : "are"} waiting to be mapped. Start typing in Card id to pick one.</p>
+              ) : null}
               <div className="flex items-end gap-3 md:col-span-3">
                 <PrimaryButton>Save card and consent</PrimaryButton>
                 {selectedId ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={() => choose("")}>Cancel</button> : null}

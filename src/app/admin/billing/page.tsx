@@ -11,6 +11,9 @@ import { Badge, DataTable, Notice, PageHeader, Panel } from "@/components/admin/
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { addDays, billingEntityTypes, cycleLabels, entityTypeLabels, entityTypePlurals, formatDate, formatPeriod, periodDates, type BillingEntityType } from "@/modules/billing/billing-rules";
 import { api } from "@/lib/admin/api";
+import { useResource } from "@/components/admin/billing/use-resource";
+
+type UnsubscribedEntity = { entityType: BillingEntityType; entityId: string; name: string; code: string; status: string };
 
 const statusLabels: Record<SubscriptionRecord["status"], string> = { ACTIVE: "Active", PAUSED: "Paused", CANCELLED: "Cancelled" };
 
@@ -35,6 +38,7 @@ function SubscriptionList() {
   const saved = params.get("saved");
   const name = params.get("name");
   const subscriptions = usePagedRecords<SubscriptionRecord>(`/api/v1/billing/subscriptions${entityType ? `?entityType=${entityType}` : ""}`, false);
+  const unsubscribed = useResource<UnsubscribedEntity[]>(`/api/v1/billing/subscriptions/unsubscribed${entityType ? `?entityType=${entityType}` : ""}`);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState("");
 
@@ -74,7 +78,7 @@ function SubscriptionList() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Subscriptions" subtitle="What each school, company, and fleet pays. Invoices are issued after each period ends, from the counts at that time." />
+      <PageHeader title="Subscriptions" subtitle="What each school, company, fleet, and transport agency pays. Invoices are issued after each period ends, from the counts at that time." />
       {saved && name ? <Notice tone="ok">The subscription for {name} was {saved === "updated" ? "updated" : "created"}.</Notice> : null}
       {notice ? <Notice tone={notice.tone}>{notice.text}</Notice> : null}
       {subscriptions.error ? <Notice>{subscriptions.error}</Notice> : null}
@@ -129,6 +133,32 @@ function SubscriptionList() {
                 Open
               </Link>
             </span>,
+          ])}
+        />
+      </Panel>
+      <Panel>
+        <h2 className="text-base font-semibold text-slate-900">Not subscribed yet</h2>
+        <p className="mt-1 mb-4 text-sm text-slate-500">
+          {entityType ? entityTypePlurals[entityType] : "Organisations"} with no subscription are not billed. Add one to start invoicing them.
+        </p>
+        {unsubscribed.error ? <Notice>{unsubscribed.error}</Notice> : null}
+        <DataTable
+          columns={["Entity", "Code", "Account status", "Billing", ""]}
+          empty={unsubscribed.loading ? "Loading…" : `Every ${entityType ? entityTypeLabels[entityType].toLowerCase() : "organisation"} has a subscription.`}
+          rows={(unsubscribed.data ?? []).map((entity) => [
+            <span key="entity"><span className="font-medium text-slate-900">{entity.name}</span><span className="block text-xs text-slate-500">{entityTypeLabels[entity.entityType]}</span></span>,
+            entity.code || "—",
+            entity.status ? entity.status.charAt(0) + entity.status.slice(1).toLowerCase() : "—",
+            <Badge key="billing">No subscription</Badge>,
+            <Link
+              key="add"
+              className={textLinkClass}
+              href={`/admin/billing/subscriptions/new?entityType=${entity.entityType}&entityId=${entity.entityId}`}
+              aria-label={`Add a subscription for ${entity.name}`}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Add subscription
+            </Link>,
           ])}
         />
       </Panel>

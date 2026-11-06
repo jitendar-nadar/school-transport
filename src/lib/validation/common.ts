@@ -22,6 +22,7 @@ export const listQuerySchema = z.object({
   schoolId: optionalId,
   companyId: optionalId,
   fleetId: optionalId,
+  agencyId: optionalId,
   role: z.preprocess(blankToUndefined, z.string().trim().max(40).optional()),
   direction: z.preprocess(blankToUndefined, z.enum(["PICKUP", "DROP"]).optional()),
   vehicleType: z.preprocess(blankToUndefined, z.enum(["BUS", "VAN"]).optional()),

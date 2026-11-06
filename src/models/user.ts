@@ -16,6 +16,7 @@ const schema = new Schema(
     schoolId: { type: Schema.Types.ObjectId, ref: "School", default: null, index: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", default: null, index: true },
     fleetId: { type: Schema.Types.ObjectId, ref: "FleetAccount", default: null, index: true },
+    agencyId: { type: Schema.Types.ObjectId, ref: "TransportAgency", default: null, index: true },
     employeeId: { type: Schema.Types.ObjectId, ref: "Employee", default: null, index: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -24,7 +25,7 @@ const schema = new Schema(
     role: {
       type: String,
       required: true,
-      enum: ["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "EMPLOYEE"],
+      enum: ["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "AGENCY_ADMIN", "EMPLOYEE"],
     },
     status: { type: String, enum: ["ACTIVE", "DISABLED"], default: "ACTIVE" },
     refreshTokenSessions: { type: [sessionSchema], default: [] },

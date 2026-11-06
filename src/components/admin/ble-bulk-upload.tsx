@@ -4,6 +4,7 @@ import { Download, FileSpreadsheet, FileUp, X } from "lucide-react";
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Notice, PrimaryButton } from "@/components/admin/ui";
 import { ApiError, api } from "@/lib/admin/api";
+import { AGENCY_CARD_CSV_TEMPLATE, readAgencyCardCsv } from "@/modules/agencies/agency-rules";
 import { CARD_CSV_TEMPLATE, MAX_IMPORT_ROWS, readCardCsv, type CardImportProblem, type CardImportRow } from "@/modules/ble/ble-import";
 
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -18,11 +19,11 @@ function problemsFrom(caught: unknown): CardImportProblem[] {
   return Array.isArray(rows) ? (rows as CardImportProblem[]) : [];
 }
 
-function downloadTemplate() {
-  const url = URL.createObjectURL(new Blob([CARD_CSV_TEMPLATE], { type: "text/csv" }));
+function downloadTemplate(content: string, fileName: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/csv" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "ble-cards-template.csv";
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -30,7 +31,8 @@ function downloadTemplate() {
 const headCell = "px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500";
 const bodyCell = "px-3 py-1.5 align-top text-slate-700";
 
-export function BleBulkUpload({ onImported }: { onImported: (summary: string) => Promise<void> | void }) {
+export function BleBulkUpload({ onImported, agencyId }: { onImported: (summary: string) => Promise<void> | void; agencyId?: string }) {
+  const forAgency = Boolean(agencyId);
   const inputRef = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [error, setError] = useState("");
@@ -57,7 +59,8 @@ export function BleBulkUpload({ onImported }: { onImported: (summary: string) =>
       setError("The file is larger than 1 MB. Split it into smaller files.");
       return;
     }
-    setParsed({ fileName: file.name, ...readCardCsv(await file.text()) });
+    const text = await file.text();
+    setParsed({ fileName: file.name, ...(forAgency ? readAgencyCardCsv(text) : readCardCsv(text)) });
   }
 
   function onDrop(event: DragEvent<HTMLLabelElement>) {
@@ -72,6 +75,14 @@ export function BleBulkUpload({ onImported }: { onImported: (summary: string) =>
     setPending(true);
     setError("");
     try {
+      if (forAgency) {
+        const rows = parsed.rows.map(({ row, tagIdentifier }) => ({ row, tagIdentifier }));
+        const result = await api<{ created: number }>("/api/v1/agency-cards", { method: "POST", school: false, body: { agencyId, rows } });
+        clear();
+        const { created } = result.data;
+        await onImported(`${created} ${created === 1 ? "card" : "cards"} added to stock.`);
+        return;
+      }
       const result = await api<{ created: number; assigned: number }>("/api/v1/ble-tags/import", { method: "POST", body: { rows: parsed.rows } });
       clear();
       const { created, assigned } = result.data;
@@ -91,13 +102,19 @@ export function BleBulkUpload({ onImported }: { onImported: (summary: string) =>
   return (
     <form className="grid gap-3" onSubmit={upload} noValidate>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm leading-6 text-slate-600">
-          One card per row. Put the card in <code className="rounded bg-slate-100 px-1 text-[13px]">tagIdentifier</code>. Add a <code className="rounded bg-slate-100 px-1 text-[13px]">studentCode</code> to assign the card, or leave it empty. Up to {MAX_IMPORT_ROWS} cards per file.
-        </p>
+        {forAgency ? (
+          <p className="text-sm leading-6 text-slate-600">
+            One card per row in a <code className="rounded bg-slate-100 px-1 text-[13px]">tagIdentifier</code> column. Other columns are ignored. Up to {MAX_IMPORT_ROWS} cards per file. New cards go into stock.
+          </p>
+        ) : (
+          <p className="text-sm leading-6 text-slate-600">
+            One card per row. Put the card in <code className="rounded bg-slate-100 px-1 text-[13px]">tagIdentifier</code>. Add a <code className="rounded bg-slate-100 px-1 text-[13px]">studentCode</code> to assign the card, or leave it empty. Up to {MAX_IMPORT_ROWS} cards per file.
+          </p>
+        )}
         <button
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-brand-800 transition-colors hover:bg-brand-50"
           type="button"
-          onClick={downloadTemplate}
+          onClick={() => (forAgency ? downloadTemplate(AGENCY_CARD_CSV_TEMPLATE, "agency-cards-template.csv") : downloadTemplate(CARD_CSV_TEMPLATE, "ble-cards-template.csv"))}
         >
           <Download className="h-4 w-4" aria-hidden="true" />
           Template
@@ -123,7 +140,7 @@ export function BleBulkUpload({ onImported }: { onImported: (summary: string) =>
             <FileSpreadsheet className="h-4 w-4 shrink-0 text-brand-700" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{parsed.fileName}</span>
             <span className="shrink-0 text-xs text-slate-500">
-              {parsed.rows.length} {parsed.rows.length === 1 ? "card" : "cards"} · {withStudent} with a student
+              {parsed.rows.length} {parsed.rows.length === 1 ? "card" : "cards"}{forAgency ? "" : ` · ${withStudent} with a student`}
             </span>
             <button className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700" type="button" onClick={clear} aria-label="Remove file">
               <X className="h-4 w-4" aria-hidden="true" />
@@ -154,14 +171,14 @@ export function BleBulkUpload({ onImported }: { onImported: (summary: string) =>
                   {parsed.rows.length > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} of ${parsed.rows.length} rows` : "Rows to upload"}
                 </caption>
                 <thead>
-                  <tr><th className={headCell}>Row</th><th className={headCell}>Card</th><th className={headCell}>Student code</th></tr>
+                  <tr><th className={headCell}>Row</th><th className={headCell}>Card</th>{forAgency ? null : <th className={headCell}>Student code</th>}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {parsed.rows.slice(0, PREVIEW_ROWS).map((row) => (
                     <tr key={row.row}>
                       <td className={bodyCell}>{row.row}</td>
                       <td className={`${bodyCell} break-all`}>{row.tagIdentifier}</td>
-                      <td className={bodyCell}>{row.studentCode || <span className="text-slate-400">Unassigned</span>}</td>
+                      {forAgency ? null : <td className={bodyCell}>{row.studentCode || <span className="text-slate-400">Unassigned</span>}</td>}
                     </tr>
                   ))}
                 </tbody>

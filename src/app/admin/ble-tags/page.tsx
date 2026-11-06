@@ -16,7 +16,13 @@ type Tag = {
   status: string;
   batteryStatus: string;
   studentId?: StudentRef | string | null;
+  agencyId?: { id?: string; name?: string } | string | null;
 };
+
+function agencyName(tag: Tag) {
+  if (!tag.agencyId) return "";
+  return typeof tag.agencyId === "string" ? "Transport agency" : tag.agencyId.name || "Transport agency";
+}
 type Student = { id: string; name: string; studentCode?: string; className?: string; division?: string };
 
 function classAndDivision(student?: { className?: string; division?: string } | null) {
@@ -144,7 +150,7 @@ export default function BlePage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="BLE cards" subtitle="Change the student on a card from the list. If a card is lost, mark it inactive, then assign a new card to that student." />
+      <PageHeader title="BLE cards" subtitle="Change the student on a card from the list. If a card is lost, mark it inactive, then assign a new card to that student. Cards a transport agency hands to the school appear here to map." />
       {tags.error ? <Notice>{tags.error}</Notice> : null}
       {message ? <Notice tone={tone}>{message}</Notice> : null}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -200,7 +206,7 @@ export default function BlePage() {
       <Panel>
         <DataTable
           {...listControls(tags)}
-          columns={["Identifier", "Student", "Class", "Division", "Battery", "Status", ""]}
+          columns={["Identifier", "Student", "Class", "Division", "Battery", "Status", "Supplied by", ""]}
           rows={tags.rows.map((tag) => [
             tag.tagIdentifier,
             <select
@@ -227,7 +233,8 @@ export default function BlePage() {
                 <option key={status} value={status}>{status === "ACTIVE" ? "Active" : status === "UNASSIGNED" ? "Unassigned" : status === "INACTIVE" ? "Inactive" : status}</option>
               ))}
             </select>,
-            <RowActions key={`${tag.id}-delete`} onDelete={() => { void removeTag(tag); }} />,
+            agencyName(tag) || "School",
+            tag.agencyId ? "" : <RowActions key={`${tag.id}-delete`} onDelete={() => { void removeTag(tag); }} />,
           ])}
         />
       </Panel>

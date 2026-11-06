@@ -7,6 +7,7 @@ export const ROLES = {
   COMPANY_ADMIN: "COMPANY_ADMIN",
   COMPANY_HR: "COMPANY_HR",
   FLEET_ADMIN: "FLEET_ADMIN",
+  AGENCY_ADMIN: "AGENCY_ADMIN",
   EMPLOYEE: "EMPLOYEE",
 } as const;
 
@@ -52,6 +53,7 @@ export type AuthUser = {
   schoolId: string | null;
   companyId: string | null;
   fleetId: string | null;
+  agencyId: string | null;
   employeeId: string | null;
   name: string;
   email: string;

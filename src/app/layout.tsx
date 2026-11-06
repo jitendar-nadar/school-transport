@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ProxiTrace",
-  description: "Smart proximity and tracking platform for schools, companies, and fleets",
+  description: "Smart proximity and tracking platform for schools, companies, fleets, and transport agencies",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

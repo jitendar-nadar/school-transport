@@ -29,6 +29,7 @@ function publicUser(user: {
   schoolId?: unknown;
   companyId?: unknown;
   fleetId?: unknown;
+  agencyId?: unknown;
   employeeId?: unknown;
   name: string;
   email: string;
@@ -41,6 +42,7 @@ function publicUser(user: {
     schoolId: user.schoolId ? String(user.schoolId) : null,
     companyId: user.companyId ? String(user.companyId) : null,
     fleetId: user.fleetId ? String(user.fleetId) : null,
+    agencyId: user.agencyId ? String(user.agencyId) : null,
     employeeId: user.employeeId ? String(user.employeeId) : null,
     name: user.name,
     email: user.email,
@@ -50,7 +52,7 @@ function publicUser(user: {
   };
 }
 
-async function assertCanSignIn(user: { role: string; schoolId?: unknown; companyId?: unknown; fleetId?: unknown; status: string }) {
+async function assertCanSignIn(user: { role: string; schoolId?: unknown; companyId?: unknown; fleetId?: unknown; agencyId?: unknown; status: string }) {
   if (user.status !== "ACTIVE") {
     throw new AppError(403, "ACCOUNT_DISABLED", "This account is disabled.");
   }
@@ -67,6 +69,13 @@ async function assertCanSignIn(user: { role: string; schoolId?: unknown; company
     const fleet = await FleetAccount.findById(user.fleetId).select("status").lean();
     if (!fleet) throw new AppError(403, "FLEET_MISSING", "This fleet no longer exists.");
     if (fleet.status === "SUSPENDED") throw new AppError(403, "FLEET_SUSPENDED", "This fleet is suspended.");
+    return;
+  }
+  if (user.role === ROLES.AGENCY_ADMIN) {
+    const { TransportAgency } = await import("@/models/agency");
+    const agency = await TransportAgency.findById(user.agencyId).select("status").lean();
+    if (!agency) throw new AppError(403, "AGENCY_MISSING", "This transport agency no longer exists.");
+    if (agency.status === "SUSPENDED") throw new AppError(403, "AGENCY_SUSPENDED", "This transport agency is suspended.");
     return;
   }
   if (!user.schoolId) return;

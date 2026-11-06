@@ -30,6 +30,8 @@ const FIELD_LABELS: Record<string, string> = {
   rates: "Rates",
   startMonth: "First billing month",
   paidOn: "Payment date",
+  personId: "Person",
+  client: "Client",
 };
 
 type Flattened = {
@@ -65,7 +67,7 @@ function sentence(field: string, message: string) {
   const text = rewrite(message).replace(/\.$/, "");
   if (text.toLowerCase().startsWith(label.toLowerCase())) return ensurePeriod(text);
   if (/^(must|is)\b/i.test(text)) return ensurePeriod(`${label} ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
-  if (/^(enter|choose|use|select|give|write|password|confirm)\b/i.test(text)) return ensurePeriod(text);
+  if (/^(enter|choose|use|select|give|write|password|confirm|keep|stop|take|mark|ask|move|remove)\b/i.test(text)) return ensurePeriod(text);
   return ensurePeriod(`${label}: ${text}`);
 }
 

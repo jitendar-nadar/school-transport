@@ -11,6 +11,8 @@ const vehicleSchema = new Schema(
     attendantIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     studentIds: [{ type: Schema.Types.ObjectId, ref: "Student" }],
     status: { type: String, enum: ["ACTIVE", "MAINTENANCE", "INACTIVE"], default: "ACTIVE" },
+    agencyId: { type: Schema.Types.ObjectId, ref: "TransportAgency", default: null },
+    agencyVehicleId: { type: Schema.Types.ObjectId, ref: "AgencyVehicle", default: null, index: true },
   },
   { timestamps: true },
 );

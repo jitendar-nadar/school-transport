@@ -10,7 +10,7 @@ import { DataTable, Notice, PageHeader, Panel } from "@/components/admin/ui";
 import { useScope } from "@/components/admin/shell";
 import { cycleLabels, formatINR, formatDate, formatMonth, formatPeriod, metricLabels, metricsFor } from "@/modules/billing/billing-rules";
 
-const tenantRoles = new Set(["SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN"]);
+const tenantRoles = new Set(["SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "AGENCY_ADMIN"]);
 
 function Account() {
   const account = useResource<AccountView>("/api/v1/billing/account");
@@ -105,7 +105,7 @@ export default function MyBillingPage() {
     return (
       <div className="space-y-5">
         <PageHeader title="Billing" subtitle="Billing for your organisation." />
-        <Notice>Only school, company, and fleet admins can see their organisation&apos;s billing.</Notice>
+        <Notice>Only school, company, fleet, and transport agency admins can see their organisation&apos;s billing.</Notice>
       </div>
     );
   }

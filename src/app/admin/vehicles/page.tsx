@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { SearchSelect } from "@/components/admin/search-select";
 import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
@@ -16,7 +17,13 @@ type Vehicle = {
   status: string;
   driverIds?: Array<{ id?: string } | string>;
   attendantIds?: Array<{ id?: string } | string>;
+  agencyId?: { id?: string; name?: string; contactPhone?: string } | string | null;
 };
+
+function agencyOf(vehicle: Vehicle | null) {
+  if (!vehicle?.agencyId) return null;
+  return typeof vehicle.agencyId === "string" ? { name: "a transport agency" } : vehicle.agencyId;
+}
 
 function idsOf(value?: Array<{ id?: string } | string>) {
   return (value || []).map((item) => typeof item === "string" ? item : item.id || "").filter(Boolean);
@@ -31,6 +38,7 @@ export default function VehiclesPage() {
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const drivers = people.rows.filter((person) => person.role === "DRIVER");
   const attendants = people.rows.filter((person) => person.role === "ATTENDANT");
+  const supplier = agencyOf(editing);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,16 +83,28 @@ export default function VehiclesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Vehicles" subtitle="Add the bus or van, and the drivers and attendants who may run it." />
+      <PageHeader title="Vehicles" subtitle="Add the bus or van, and the drivers and attendants who may run it. Vehicles supplied by a transport agency appear here on their own." />
       {vehicles.error ? <Notice>{vehicles.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
         <ValidatedForm key={`${editing?.id || "new"}-${formVersion}`} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
-          <Field label="Number"><input className={controlClass} name="vehicleNumber" minLength={1} maxLength={30} defaultValue={editing?.vehicleNumber || ""} required /></Field>
+          {supplier ? (
+            <p className="rounded-lg border border-aqua-200 bg-aqua-50 px-3 py-2 text-sm text-aqua-900 md:col-span-3">
+              Supplied by {supplier.name}{supplier.contactPhone ? ` (${supplier.contactPhone})` : ""}. The agency sets its number, type, and seats; choose the drivers and attendants here.
+            </p>
+          ) : null}
+          <Field label="Number"><input className={`${controlClass} read-only:bg-slate-50 read-only:text-slate-500`} name="vehicleNumber" minLength={1} maxLength={30} defaultValue={editing?.vehicleNumber || ""} readOnly={Boolean(supplier)} required /></Field>
           <Field label="Type">
-            <select className={controlClass} name="vehicleType" defaultValue={editing?.vehicleType || "BUS"}><option>BUS</option><option>VAN</option></select>
+            {supplier ? (
+              <>
+                <input className={`${controlClass} bg-slate-50 text-slate-500`} value={editing?.vehicleType || ""} readOnly aria-label="Type" />
+                <input type="hidden" name="vehicleType" value={editing?.vehicleType || "BUS"} />
+              </>
+            ) : (
+              <select className={controlClass} name="vehicleType" defaultValue={editing?.vehicleType || "BUS"}><option>BUS</option><option>VAN</option></select>
+            )}
           </Field>
-          <Field label="Capacity"><input className={controlClass} name="capacity" type="number" min={1} defaultValue={editing?.capacity ?? ""} required /></Field>
+          <Field label="Capacity"><input className={`${controlClass} read-only:bg-slate-50 read-only:text-slate-500`} name="capacity" type="number" min={1} defaultValue={editing?.capacity ?? ""} readOnly={Boolean(supplier)} required /></Field>
           <SearchSelect
             key={`drivers-${editing?.id || "new"}-${formVersion}`}
             label="Drivers"
@@ -116,14 +136,26 @@ export default function VehiclesPage() {
       <Panel>
         <DataTable
           {...listControls(vehicles)}
-          columns={["Number", "Type", "Capacity", "Status", ""]}
-          rows={vehicles.rows.map((vehicle) => [
-            vehicle.vehicleNumber,
-            vehicle.vehicleType,
-            String(vehicle.capacity),
-            vehicle.status,
-            <RowActions key={vehicle.id} onEdit={() => { setEditing(vehicle); setMessage(""); setFieldErrors({}); }} onDelete={() => { void removeVehicle(vehicle); }} />,
-          ])}
+          columns={["Number", "Type", "Capacity", "Status", "Supplied by", ""]}
+          rows={vehicles.rows.map((vehicle) => {
+            const agency = agencyOf(vehicle);
+            const edit = () => { setEditing(vehicle); setMessage(""); setFieldErrors({}); };
+            return [
+              vehicle.vehicleNumber,
+              vehicle.vehicleType,
+              String(vehicle.capacity),
+              agency && vehicle.status === "INACTIVE" ? "No longer supplied" : vehicle.status,
+              agency?.name || "School",
+              agency && vehicle.status !== "INACTIVE" ? (
+                <button key={vehicle.id} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-brand-800 transition-colors hover:bg-brand-50" type="button" onClick={edit}>
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  Edit
+                </button>
+              ) : (
+                <RowActions key={vehicle.id} onEdit={edit} onDelete={() => { void removeVehicle(vehicle); }} />
+              ),
+            ];
+          })}
         />
       </Panel>
     </div>

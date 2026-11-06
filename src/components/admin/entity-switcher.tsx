@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Building2, Check, ChevronsUpDown, LoaderCircle, Luggage, School, Search, Shapes, Truck, type LucideIcon } from "lucide-react";
+import { Building2, BusFront, Check, ChevronsUpDown, LoaderCircle, School, Search, Shapes, Truck, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { easeOut } from "@/components/admin/motion";
@@ -9,13 +9,13 @@ import type { EntityKind } from "@/components/admin/nav";
 import type { ScopedEntity } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
 
-type Group = { key: string; label: string; single: string; kind: EntityKind; icon: LucideIcon; path: string; codeField: string; category?: string };
+type Group = { key: string; label: string; single: string; kind: EntityKind; icon: LucideIcon; path: string; codeField: string };
 
 const groups: Group[] = [
   { key: "SCHOOL", label: "Schools", single: "School", kind: "SCHOOL", icon: School, path: "/api/v1/schools", codeField: "schoolCode" },
   { key: "COMPANY", label: "Companies", single: "Company", kind: "COMPANY", icon: Building2, path: "/api/v1/companies", codeField: "companyCode" },
-  { key: "TRANSPORT", label: "Fleets", single: "Fleet", kind: "FLEET", icon: Truck, path: "/api/v1/fleets?category=TRANSPORT", codeField: "fleetCode", category: "TRANSPORT" },
-  { key: "TOUR_TRAVEL", label: "Tour and travel", single: "Tour and travel", kind: "FLEET", icon: Luggage, path: "/api/v1/fleets?category=TOUR_TRAVEL", codeField: "fleetCode", category: "TOUR_TRAVEL" },
+  { key: "FLEET", label: "Fleets", single: "Fleet", kind: "FLEET", icon: Truck, path: "/api/v1/fleets", codeField: "fleetCode" },
+  { key: "AGENCY", label: "Transport agencies", single: "Transport agency", kind: "AGENCY", icon: BusFront, path: "/api/v1/agencies", codeField: "agencyCode" },
 ];
 
 const PER_GROUP = 6;
@@ -24,11 +24,10 @@ type Row = { id: string; name: string; code: string; status: string };
 type GroupResult = { rows: Row[]; total: number; error?: string };
 type Loaded = { key: string; results: Record<string, GroupResult> };
 
-const placeholders: Record<EntityKind, string> = { SCHOOL: "Choose a school", COMPANY: "Choose a company", FLEET: "Choose a fleet" };
+const placeholders: Record<EntityKind, string> = { SCHOOL: "Choose a school", COMPANY: "Choose a company", FLEET: "Choose a fleet", AGENCY: "Choose an agency" };
 
-function groupFor(kind: EntityKind | null, entity: ScopedEntity | null) {
+function groupFor(kind: EntityKind | null) {
   if (!kind) return null;
-  if (kind === "FLEET") return groups.find((group) => group.category === (entity?.category === "TOUR_TRAVEL" ? "TOUR_TRAVEL" : "TRANSPORT")) || null;
   return groups.find((group) => group.kind === kind) || null;
 }
 
@@ -70,7 +69,7 @@ export function EntitySwitcher({
   const requestKey = `${opened}|${needle}`;
   const loading = open && loaded?.key !== requestKey;
   const results = loaded?.results;
-  const current = groupFor(kind, selected);
+  const current = groupFor(kind);
   const CurrentIcon = current?.icon || Shapes;
 
   useEffect(() => {
@@ -93,7 +92,7 @@ export function EntitySwitcher({
 
   useEffect(() => {
     if (!selected || selected.name || !kind) return;
-    const group = groupFor(kind, selected);
+    const group = groupFor(kind);
     if (!group) return;
     let ignore = false;
     api<Array<{ id: string; name: string }>>(`${group.path}${group.path.includes("?") ? "&" : "?"}limit=100`, { school: false }).then((result) => {
@@ -132,7 +131,7 @@ export function EntitySwitcher({
   }
 
   function choose(group: Group, row: Row) {
-    onSelect(group.kind, { id: row.id, name: row.name, category: group.category });
+    onSelect(group.kind, { id: row.id, name: row.name });
     setOpen(false);
     buttonRef.current?.focus();
   }
@@ -172,7 +171,7 @@ export function EntitySwitcher({
               <input
                 autoFocus
                 className="w-full bg-transparent py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                placeholder="Search schools, companies, fleets, operators"
+                placeholder="Search schools, companies, fleets, agencies"
                 role="combobox"
                 aria-label="Search entities"
                 aria-expanded="true"

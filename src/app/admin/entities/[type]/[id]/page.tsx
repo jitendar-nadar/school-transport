@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BackToEntities, EntityForm } from "@/components/admin/entity-form";
-import { capitalised, entityTypes, typeFromSlug, typeOfFleet, type EntityRecord, type EntityType } from "@/components/admin/entity-types";
+import { capitalised, entityTypes, typeFromSlug, type EntityRecord, type EntityType } from "@/components/admin/entity-types";
 import { Notice, PageHeader, Panel } from "@/components/admin/ui";
 import { useScope } from "@/components/admin/shell";
 import { api } from "@/lib/admin/api";
@@ -11,7 +11,7 @@ import { api } from "@/lib/admin/api";
 type Loaded = { key: string; entity: EntityRecord | null; error: string };
 
 function EditEntity() {
-  const { user } = useScope();
+  const { user, selectEntity } = useScope();
   const router = useRouter();
   const params = useParams<{ type: string; id: string }>();
   const slugType = typeFromSlug(params.type);
@@ -54,7 +54,7 @@ function EditEntity() {
 
   const current = loaded?.key === requestKey ? loaded : null;
   const entity = current?.entity ?? null;
-  const type: EntityType = entity && entityTypes[slugType].category ? typeOfFleet(entity.category) : slugType;
+  const type: EntityType = slugType;
   const config = entityTypes[type];
 
   return (
@@ -78,6 +78,23 @@ function EditEntity() {
           <p className="py-6 text-center text-sm text-slate-500">{current?.error ? "Go back to the list and choose the entity again." : "Loading…"}</p>
         )}
       </Panel>
+      {entity && type === "AGENCY" ? (
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">Link the schools and companies this agency serves. Its vehicles and cards can then be given to them.</p>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-brand-800 shadow-sm transition hover:bg-slate-50"
+              onClick={() => {
+                selectEntity("AGENCY", { id: entity.id, name: entity.name });
+                router.push("/admin/agency-clients");
+              }}
+            >
+              Manage clients
+            </button>
+          </div>
+        </Panel>
+      ) : null}
     </div>
   );
 }

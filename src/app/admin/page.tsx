@@ -1,10 +1,10 @@
 "use client";
 
-import { Backpack, Briefcase, Building2, Bus, CalendarCheck, CalendarClock, ChevronRight, Navigation, Route, TriangleAlert, Truck, UserCheck } from "lucide-react";
+import { Backpack, Briefcase, Building2, Bus, BusFront, CalendarCheck, CalendarClock, ChevronRight, CreditCard, Handshake, Navigation, Package, Route, School, TriangleAlert, Truck, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useScope } from "@/components/admin/shell";
-import { Badge, PageHeader, Panel, StatCard } from "@/components/admin/ui";
+import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/admin/ui";
 import { api } from "@/lib/admin/api";
 import { MyDay } from "@/components/admin/my-day";
 
@@ -20,15 +20,17 @@ type Trip = {
 };
 
 export default function OverviewPage() {
-  const { user, scope, companyId, fleetId } = useScope();
+  const { user, scope, companyId, fleetId, agencyId } = useScope();
   if (user.role === "PLATFORM_ADMIN") {
     if (scope.active === "COMPANY" && companyId) return <CompanyHome companyId={companyId} name={scope.COMPANY?.name} />;
     if (scope.active === "FLEET" && fleetId) return <FleetHome fleetId={fleetId} name={scope.FLEET?.name} />;
+    if (scope.active === "AGENCY" && agencyId) return <AgencyHome agencyId={agencyId} name={scope.AGENCY?.name} />;
     return <SchoolHome />;
   }
   if (user.role === "COMPANY_ADMIN") return <CompanyHome />;
   if (user.role === "COMPANY_HR") return <HrHome />;
   if (user.role === "FLEET_ADMIN") return <FleetHome />;
+  if (user.role === "AGENCY_ADMIN") return <AgencyHome />;
   if (user.role === "EMPLOYEE") return <EmployeeHome />;
   return <SchoolHome />;
 }
@@ -52,18 +54,25 @@ function EmployeeHome() {
   return <MyDay />;
 }
 
+type SuppliedVehicle = { id: string; vehicleNumber: string; vehicleType: string; capacity: number; status: string; agencyName: string; agencyPhone: string };
+
 function CompanyHome({ companyId, name }: { companyId?: string; name?: string }) {
   const [summary, setSummary] = useState<{ departments: number; employees: number; openGaps: number } | null>(null);
+  const [supplied, setSupplied] = useState<SuppliedVehicle[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
-    api<{ departments: number; employees: number; openGaps: number }>(`/api/v1/companies/summary${companyId ? `?companyId=${companyId}` : ""}`, { school: false })
+    const query = companyId ? `?companyId=${companyId}` : "";
+    api<{ departments: number; employees: number; openGaps: number }>(`/api/v1/companies/summary${query}`, { school: false })
       .then((result) => setSummary(result.data))
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the company."));
+    api<SuppliedVehicle[]>(`/api/v1/agency-vehicles/supplied${query}`, { school: false })
+      .then((result) => setSupplied(result.data))
+      .catch(() => setSupplied([]));
   }, [companyId]);
   return (
-    <div>
+    <div className="space-y-5">
       <PageHeader title={name ? `${name} overview` : "Company overview"} subtitle="Attendance records for this company. School students and bus trips are not included." icon={Building2} />
-      {error ? <p className="mb-4 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {summary ? (
         <div className="grid gap-3 sm:grid-cols-3">
           <StatCard label="Departments" value={summary.departments} icon={Building2} />
@@ -71,6 +80,70 @@ function CompanyHome({ companyId, name }: { companyId?: string; name?: string })
           <StatCard label="Open gaps" value={summary.openGaps} icon={CalendarClock} tone={summary.openGaps ? "amber" : "brand"} />
         </div>
       ) : null}
+      {supplied.length ? (
+        <Panel>
+          <h3 className="mb-1 font-medium">Vehicles from transport agencies</h3>
+          <p className="mb-3 text-sm text-slate-500">Buses and vans an agency runs for this company. Commute trips with boarding come later.</p>
+          <DataTable
+            columns={["Vehicle", "Type", "Seats", "Status", "Agency"]}
+            rows={supplied.map((vehicle) => [
+              vehicle.vehicleNumber,
+              vehicle.vehicleType,
+              String(vehicle.capacity),
+              vehicle.status,
+              [vehicle.agencyName, vehicle.agencyPhone].filter(Boolean).join(" · "),
+            ])}
+          />
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
+type AgencySummary = { schools: number; companies: number; vehicles: number; cardsInStock: number; cardsWaiting: number; cardsIssued: number };
+
+function AgencyHome({ agencyId, name }: { agencyId?: string; name?: string }) {
+  const [summary, setSummary] = useState<AgencySummary | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api<AgencySummary>(`/api/v1/agencies/summary${agencyId ? `?agencyId=${agencyId}` : ""}`, { school: false })
+      .then((result) => setSummary(result.data))
+      .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the agency."));
+  }, [agencyId]);
+  const links = [
+    { href: "/admin/agency-clients", label: "Clients", icon: Handshake },
+    { href: "/admin/agency-vehicles", label: "Agency vehicles", icon: BusFront },
+    { href: "/admin/agency-cards", label: "Agency cards", icon: CreditCard },
+  ];
+  return (
+    <div className="space-y-5">
+      <PageHeader title={name ? `${name} overview` : "Agency overview"} subtitle="Buses and vans this agency runs for schools and companies, and the BLE cards it gives their students and employees." icon={BusFront} />
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {summary ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <StatCard label="Client schools" value={summary.schools} icon={School} />
+          <StatCard label="Client companies" value={summary.companies} icon={Building2} />
+          <StatCard label="Vehicles" value={summary.vehicles} icon={BusFront} />
+          <StatCard label="Cards issued" value={summary.cardsIssued} icon={CreditCard} />
+          <StatCard label="Cards in stock" value={summary.cardsInStock} icon={Package} />
+        </div>
+      ) : null}
+      {summary?.cardsWaiting ? (
+        <p className="text-sm text-slate-600">{summary.cardsWaiting} {summary.cardsWaiting === 1 ? "card is" : "cards are"} with clients but not yet given to a person.</p>
+      ) : null}
+      <Panel>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} className="group flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 transition hover:border-brand-200 hover:bg-slate-50">
+              <span className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                <link.icon className="h-4 w-4 text-brand-700" aria-hidden="true" />
+                {link.label}
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            </Link>
+          ))}
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -134,7 +207,7 @@ function SchoolHome() {
   return (
     <div>
       <PageHeader title="Transport overview" subtitle="Active buses, boarding progress, and safety alerts for the selected school." />
-      {user.role === "PLATFORM_ADMIN" && !schoolId ? <Panel>Choose a school, company, or fleet in the header to see its overview.</Panel> : null}
+      {user.role === "PLATFORM_ADMIN" && !schoolId ? <Panel>Choose a school, company, fleet, or transport agency in the header to see its overview.</Panel> : null}
       {error ? <p className="mb-4 text-sm text-red-700">{error}</p> : null}
       {overview ? (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PriceFields, readPrices } from "@/components/admin/billing/price-fields";
 import { useResource } from "@/components/admin/billing/use-resource";
 import type { PlanRecord, SubscriptionRecord } from "@/components/admin/billing/billing-types";
@@ -11,28 +11,39 @@ import { billingEntityTypes, calendarDate, cycleLabels, cycles, entityTypeLabels
 import { gstStates } from "@/modules/billing/gst-states";
 import { api } from "@/lib/admin/api";
 
-type EntityOption = { id: string; name: string; contactEmail?: string; address?: string; category?: string };
+type EntityOption = { id: string; name: string; contactEmail?: string; address?: string };
 
 const entityLists: Record<BillingEntityType, string> = {
   SCHOOL: "/api/v1/schools?limit=100",
   COMPANY: "/api/v1/companies?limit=100",
   FLEET: "/api/v1/fleets?limit=100",
+  AGENCY: "/api/v1/agencies?limit=100",
 };
 
-function EntityPicker({ entityType, onPick }: { entityType: BillingEntityType; onPick: (entity: EntityOption | null) => void }) {
+function EntityPicker({ entityType, initialId, onPick }: { entityType: BillingEntityType; initialId?: string; onPick: (entity: EntityOption | null) => void }) {
   const entities = useResource<EntityOption[]>(entityLists[entityType]);
   const taken = useResource<SubscriptionRecord[]>(`/api/v1/billing/subscriptions?entityType=${entityType}&limit=100`);
+  const prefilled = useRef(false);
   const options = useMemo(() => {
     const subscribed = new Set((taken.data ?? []).map((item) => item.entityId));
     return (entities.data ?? [])
       .filter((entity) => !subscribed.has(entity.id))
-      .map((entity) => ({ ...entity, detail: entity.category === "TOUR_TRAVEL" ? "Tour and travel" : entity.contactEmail }));
+      .map((entity) => ({ ...entity, detail: entity.contactEmail }));
   }, [entities.data, taken.data]);
+
+  useEffect(() => {
+    if (prefilled.current || !initialId) return;
+    const entity = options.find((option) => option.id === initialId);
+    if (!entity) return;
+    prefilled.current = true;
+    onPick(entity);
+  }, [initialId, onPick, options]);
 
   return (
     <SearchSelect
       label={entityTypeLabels[entityType]}
       name="entityId"
+      initialIds={initialId ? [initialId] : []}
       options={options}
       placeholder={`Search ${entityTypeLabels[entityType].toLowerCase()} by name`}
       anotherPlaceholder="Choose another to replace it"
@@ -44,9 +55,19 @@ function EntityPicker({ entityType, onPick }: { entityType: BillingEntityType; o
   );
 }
 
-export function SubscriptionForm({ subscription, onSaved }: { subscription?: SubscriptionRecord; onSaved: (name: string) => void }) {
+export function SubscriptionForm({
+  subscription,
+  initialEntityType,
+  initialEntityId,
+  onSaved,
+}: {
+  subscription?: SubscriptionRecord;
+  initialEntityType?: BillingEntityType;
+  initialEntityId?: string;
+  onSaved: (name: string) => void;
+}) {
   const editing = Boolean(subscription);
-  const [entityType, setEntityType] = useState<BillingEntityType>(subscription?.entityType ?? "SCHOOL");
+  const [entityType, setEntityType] = useState<BillingEntityType>(subscription?.entityType ?? initialEntityType ?? "SCHOOL");
   const [entityName, setEntityName] = useState(subscription?.entityName ?? "");
   const [planId, setPlanId] = useState(subscription?.planId ?? "");
   const [billing, setBilling] = useState({
@@ -63,7 +84,7 @@ export function SubscriptionForm({ subscription, onSaved }: { subscription?: Sub
   const chosenPlan = planOptions.find((plan) => plan.id === planId);
   const priceSource = chosenPlan && chosenPlan.id !== subscription?.planId ? chosenPlan : subscription ?? chosenPlan;
 
-  function pickEntity(entity: EntityOption | null) {
+  const pickEntity = useCallback((entity: EntityOption | null) => {
     setEntityName(entity?.name ?? "");
     if (!entity) return;
     setBilling((current) => ({
@@ -71,7 +92,7 @@ export function SubscriptionForm({ subscription, onSaved }: { subscription?: Sub
       address: current.address || entity.address || "",
       email: current.email || entity.contactEmail || "",
     }));
-  }
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -127,7 +148,7 @@ export function SubscriptionForm({ subscription, onSaved }: { subscription?: Sub
               </select>
             </Field>
             <div className="md:col-span-2">
-              <EntityPicker key={entityType} entityType={entityType} onPick={pickEntity} />
+              <EntityPicker key={entityType} entityType={entityType} initialId={entityType === initialEntityType ? initialEntityId : undefined} onPick={pickEntity} />
             </div>
           </>
         )}

@@ -5,13 +5,16 @@ import {
   Briefcase,
   Building2,
   Bus,
+  BusFront,
   CalendarCheck,
   CalendarClock,
   ChartColumn,
   CirclePlus,
   ClipboardList,
+  CreditCard,
   DoorOpen,
   GraduationCap,
+  Handshake,
   IdCard,
   IndianRupee,
   Layers,
@@ -40,7 +43,7 @@ export type NavItem = { href: string; label: string; icon: LucideIcon; platform?
 
 export const overviewLink: NavItem = { href: "/admin", label: "Overview", icon: LayoutDashboard };
 
-export type EntityKind = "SCHOOL" | "COMPANY" | "FLEET";
+export type EntityKind = "SCHOOL" | "COMPANY" | "FLEET" | "AGENCY";
 
 export const navGroups: Array<{ label: string; roles: string[]; scope?: EntityKind; links: NavItem[] }> = [
   {
@@ -127,8 +130,18 @@ export const navGroups: Array<{ label: string; roles: string[]; scope?: EntityKi
     ],
   },
   {
+    label: "Transport agency",
+    roles: ["PLATFORM_ADMIN", "AGENCY_ADMIN"],
+    scope: "AGENCY",
+    links: [
+      { href: "/admin/agency-clients", label: "Clients", icon: Handshake },
+      { href: "/admin/agency-vehicles", label: "Agency vehicles", icon: BusFront },
+      { href: "/admin/agency-cards", label: "Agency cards", icon: CreditCard },
+    ],
+  },
+  {
     label: "Account",
-    roles: ["SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN"],
+    roles: ["SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "AGENCY_ADMIN"],
     links: [
       { href: "/admin/my-billing", label: "Billing", icon: Wallet },
     ],

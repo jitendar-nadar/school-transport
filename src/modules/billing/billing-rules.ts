@@ -1,5 +1,5 @@
-export type BillingEntityType = "SCHOOL" | "COMPANY" | "FLEET";
-export type Metric = "STUDENTS" | "SCHOOL_VEHICLES" | "BLE_CARDS" | "EMPLOYEES" | "GATEWAYS" | "FLEET_VEHICLES";
+export type BillingEntityType = "SCHOOL" | "COMPANY" | "FLEET" | "AGENCY";
+export type Metric = "STUDENTS" | "SCHOOL_VEHICLES" | "BLE_CARDS" | "EMPLOYEES" | "GATEWAYS" | "FLEET_VEHICLES" | "AGENCY_VEHICLES" | "AGENCY_CARDS";
 export type Cycle = "MONTHLY" | "QUARTERLY" | "YEARLY";
 export type MetricRate = { metric: Metric; ratePaise: number };
 export type Counts = Partial<Record<Metric, number>>;
@@ -22,9 +22,9 @@ export type Tax = {
   igstPaise: number;
 };
 
-export const billingEntityTypes: BillingEntityType[] = ["SCHOOL", "COMPANY", "FLEET"];
+export const billingEntityTypes: BillingEntityType[] = ["SCHOOL", "COMPANY", "FLEET", "AGENCY"];
 export const cycles: Cycle[] = ["MONTHLY", "QUARTERLY", "YEARLY"];
-export const allMetrics: Metric[] = ["STUDENTS", "SCHOOL_VEHICLES", "BLE_CARDS", "EMPLOYEES", "GATEWAYS", "FLEET_VEHICLES"];
+export const allMetrics: Metric[] = ["STUDENTS", "SCHOOL_VEHICLES", "BLE_CARDS", "EMPLOYEES", "GATEWAYS", "FLEET_VEHICLES", "AGENCY_VEHICLES", "AGENCY_CARDS"];
 export const GST_RATE_PERCENT = 18;
 export const BILLING_TIME_ZONE = "Asia/Kolkata";
 
@@ -32,6 +32,7 @@ export const metricsFor: Record<BillingEntityType, Metric[]> = {
   SCHOOL: ["STUDENTS", "SCHOOL_VEHICLES", "BLE_CARDS"],
   COMPANY: ["EMPLOYEES", "GATEWAYS"],
   FLEET: ["FLEET_VEHICLES"],
+  AGENCY: ["AGENCY_VEHICLES", "AGENCY_CARDS"],
 };
 
 export const metricLabels: Record<Metric, { label: string; unit: string }> = {
@@ -41,18 +42,22 @@ export const metricLabels: Record<Metric, { label: string; unit: string }> = {
   EMPLOYEES: { label: "Active employees", unit: "employee" },
   GATEWAYS: { label: "Gateways", unit: "gateway" },
   FLEET_VEHICLES: { label: "Trucks and vehicles", unit: "vehicle" },
+  AGENCY_VEHICLES: { label: "Agency buses and vans", unit: "vehicle" },
+  AGENCY_CARDS: { label: "Issued BLE cards", unit: "card" },
 };
 
 export const entityTypeLabels: Record<BillingEntityType, string> = {
   SCHOOL: "School",
   COMPANY: "Company",
   FLEET: "Fleet",
+  AGENCY: "Transport agency",
 };
 
 export const entityTypePlurals: Record<BillingEntityType, string> = {
   SCHOOL: "Schools",
   COMPANY: "Companies",
   FLEET: "Fleets",
+  AGENCY: "Transport agencies",
 };
 
 export const cycleMonths: Record<Cycle, number> = { MONTHLY: 1, QUARTERLY: 3, YEARLY: 12 };

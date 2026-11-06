@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, type Variants } from "framer-motion";
-import { Building2, Eye, EyeOff, LoaderCircle, LogIn, School, ShieldCheck, Truck } from "lucide-react";
+import { Building2, BusFront, Eye, EyeOff, LoaderCircle, LogIn, School, ShieldCheck, Truck } from "lucide-react";
 import Image from "next/image";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,6 +21,7 @@ const demoAccounts =
 const highlights = [
   { icon: School, title: "Schools", text: "BLE card boarding, live bus location, and alerts for parents." },
   { icon: Building2, title: "Companies", text: "Card-based attendance with out-of-office review and payroll reports." },
+  { icon: BusFront, title: "Transport agencies", text: "Buses, vans, and BLE cards supplied to client schools and companies." },
   { icon: Truck, title: "Fleets", text: "GPS trucks on a live map, trip playback, and daily reports." },
 ];
 
@@ -139,7 +140,7 @@ function LoginForm() {
       setError(formErrorText(body.error?.details) || (Object.keys(fields).length ? "" : body.error?.message || "Sign in failed."));
       return;
     }
-    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "EMPLOYEE"].includes(body.data.user.role)) {
+    if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "AGENCY_ADMIN", "EMPLOYEE"].includes(body.data.user.role)) {
       setError("This console is for administrators. Drivers, attendants, and parents use the mobile apps.");
       await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
       return;
@@ -152,7 +153,7 @@ function LoginForm() {
     <ValidatedForm className="w-full" serverErrors={fieldErrors} onInvalid={() => setError("")} onSubmit={onSubmit}>
       <Image src="/brand/proxitrace-logo.png" alt="ProxiTrace, smart proximity and tracking platform" width={960} height={264} sizes="220px" className="mb-8 h-auto w-[220px] mix-blend-multiply lg:hidden" preload />
       <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Welcome back</h1>
-      <p className="mt-2 text-sm leading-6 text-slate-500">Sign in to manage your school, company, or transport fleet.</p>
+      <p className="mt-2 text-sm leading-6 text-slate-500">Sign in to manage your school, company, transport agency, or fleet.</p>
       {params.get("denied") ? <p className="mt-4 text-sm text-red-700">Use an administrator account for this console.</p> : null}
       <div className="mt-8">
         <Field label="Email">

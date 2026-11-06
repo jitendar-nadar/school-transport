@@ -14,8 +14,14 @@ type Vehicle = {
   id: string;
   vehicleNumber: string;
   capacity: number;
+  seatsTakenElsewhere?: number;
   studentIds?: Array<MappedStudent | string>;
 };
+
+function seatLimit(vehicle: Vehicle) {
+  const free = vehicle.capacity - (vehicle.seatsTakenElsewhere ?? 0);
+  return Math.max(free, mappedStudents(vehicle).length, 1);
+}
 
 function mappedStudents(vehicle: Vehicle) {
   return (vehicle.studentIds ?? []).filter((student): student is MappedStudent => (
@@ -99,9 +105,14 @@ export default function StudentMappingPage() {
             anotherPlaceholder="Search to add another student"
             emptyMatch="No students match that search."
             emptyOptions="Add a student first."
-            max={chosen?.capacity || 80}
+            max={chosen ? seatLimit(chosen) : 80}
           />
           <div className="flex items-end"><PrimaryButton>Save mapping</PrimaryButton></div>
+          {chosen?.seatsTakenElsewhere ? (
+            <p className="text-sm text-slate-500 md:col-span-3">
+              {chosen.vehicleNumber} is shared with other schools through its transport agency. They use {chosen.seatsTakenElsewhere} of its {chosen.capacity} seats, so you can map up to {Math.max(0, chosen.capacity - chosen.seatsTakenElsewhere)} student{chosen.capacity - chosen.seatsTakenElsewhere === 1 ? "" : "s"}.
+            </p>
+          ) : null}
         </ValidatedForm>
       </Panel>
       <Panel>

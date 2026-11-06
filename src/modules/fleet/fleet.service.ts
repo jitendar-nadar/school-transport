@@ -8,6 +8,7 @@ import { Student } from "@/models/student";
 import { Trip } from "@/models/trip";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
+import { seatsBySchool, seatsUsed } from "@/modules/agencies/agency-seats";
 import type { AuthUser } from "@/types/domain";
 import { objectIdSchema } from "@/lib/validation/common";
 import { escapeRegex, serialize } from "@/utils/serialize";
@@ -81,9 +82,20 @@ async function assertCrew(schoolId: string, ids: string[], role: "DRIVER" | "ATT
   }
 }
 
-async function assertStudents(schoolId: string, ids: string[], capacity: number, vehicleId?: string) {
+async function seatsElsewhere(vehicle: { schoolId?: unknown; agencyVehicleId?: unknown }) {
+  if (!vehicle.agencyVehicleId) return 0;
+  const agencyVehicleId = String(vehicle.agencyVehicleId);
+  return seatsUsed(await seatsBySchool([agencyVehicleId]), agencyVehicleId, undefined, String(vehicle.schoolId));
+}
+
+async function assertStudents(schoolId: string, ids: string[], capacity: number, vehicleId?: string, shared?: { elsewhere: number; current: number }) {
   if (ids.length > capacity) {
     throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
+  }
+  if (shared?.elsewhere && ids.length + shared.elsewhere > capacity && ids.length > shared.current) {
+    const left = Math.max(0, capacity - shared.elsewhere);
+    const message = `This vehicle is shared with other schools, which have mapped ${shared.elsewhere} of its ${capacity} seats. Choose no more than ${left} student${left === 1 ? "" : "s"}.`;
+    throw new AppError(422, "OVER_CAPACITY", message, { fieldErrors: { studentIds: [message] } });
   }
   if (new Set(ids).size !== ids.length) {
     throw new AppError(422, "DUPLICATE_STUDENT", "Each student can be mapped only once.");
@@ -130,9 +142,15 @@ export async function listVehicles(user: AuthUser, query: { page: number; limit:
       { path: "driverIds", select: "name phone" },
       { path: "attendantIds", select: "name phone" },
       { path: "studentIds", select: "name studentCode className division" },
+      { path: "agencyId", select: "name contactPhone" },
     ],
   });
-  return { items: result.items.map((item) => serialize(item)), meta: result.meta };
+  const items = result.items.map((item) => serialize(item) as Record<string, unknown> & { agencyVehicleId?: unknown });
+  const seats = await seatsBySchool(items.flatMap((item) => (item.agencyVehicleId ? [String(item.agencyVehicleId)] : [])));
+  return {
+    items: items.map((item) => ({ ...item, seatsTakenElsewhere: item.agencyVehicleId ? seatsUsed(seats, String(item.agencyVehicleId), undefined, schoolId) : 0 })),
+    meta: result.meta,
+  };
 }
 
 export async function listMappedStudents(user: AuthUser, query: { page: number; limit: number; search?: string; schoolId?: string }) {
@@ -207,10 +225,20 @@ export async function updateVehicle(user: AuthUser, id: string, input: z.infer<t
   const schoolId = requireSchoolId(user, input.schoolId);
   const vehicle = await Vehicle.findOne({ _id: id, schoolId });
   if (!vehicle) throw notFound("Vehicle");
+  if (vehicle.agencyId) {
+    const changed = (["vehicleNumber", "vehicleType", "capacity", "status"] as const).filter((key) => input[key] !== undefined && String(input[key]) !== String(vehicle[key]));
+    if (changed.length) {
+      const message = "This vehicle is supplied by a transport agency. Only the agency changes its number, type, capacity, or status.";
+      throw new AppError(422, "AGENCY_VEHICLE", message, { fieldErrors: Object.fromEntries(changed.map((key) => [key, [message]])) });
+    }
+  }
   if (input.driverIds) await assertCrew(schoolId, input.driverIds, "DRIVER");
   if (input.attendantIds) await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
   const capacity = input.capacity ?? vehicle.capacity;
-  if (input.studentIds) await assertStudents(schoolId, input.studentIds, capacity, id);
+  if (input.studentIds) {
+    const shared = { elsewhere: await seatsElsewhere(vehicle), current: vehicle.studentIds?.length || 0 };
+    await assertStudents(schoolId, input.studentIds, capacity, id, shared);
+  }
   else if (input.capacity && (vehicle.studentIds?.length || 0) > input.capacity) {
     throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
   }
@@ -231,6 +259,9 @@ export async function deleteVehicle(user: AuthUser, id: string, schoolId?: strin
   const tenant = requireSchoolId(user, schoolId);
   const vehicle = await Vehicle.findOne({ _id: id, schoolId: tenant });
   if (!vehicle) throw notFound("Vehicle");
+  if (vehicle.agencyId && vehicle.status !== "INACTIVE") {
+    throw new AppError(409, "AGENCY_VEHICLE", "This vehicle is supplied by a transport agency. The agency removes it when it stops serving this school.");
+  }
   const active = await Trip.findOne({ vehicleId: vehicle._id, status: "ACTIVE" }).select("_id");
   if (active) throw new AppError(409, "IN_USE", "This vehicle has an active trip. End that trip before deleting it.");
   const route = await Route.findOne({ vehicleId: vehicle._id }).select("name");
