@@ -7,7 +7,23 @@ import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClas
 import { api } from "@/lib/admin/api";
 
 type Gap = { id: string; startedAt: string; endedAt: string; personalMinutes: number; outcome: string; status: string; reason: string };
-type Day = { checkedInAt?: string | null; lastSeenAt?: string | null; checkedOutAt?: string | null; fieldLatitude?: number | null; fieldLongitude?: number | null };
+type Day = {
+  checkedInAt?: string | null;
+  lastSeenAt?: string | null;
+  checkedOutAt?: string | null;
+  fieldLatitude?: number | null;
+  fieldLongitude?: number | null;
+  source?: string;
+  fieldSite?: string;
+  fieldReview?: string;
+  fieldReviewNote?: string;
+};
+
+const fieldReviewLabel: Record<string, string> = {
+  PENDING: "Waiting for HR approval. The hours count once HR approves the day.",
+  APPROVED: "Approved by HR.",
+  REJECTED: "Rejected by HR. This day does not count as working time.",
+};
 type Detection = { id: string; occurredAt: string; gatewayId?: { name?: string; zone?: string } | string | null };
 type Mine = {
   policy: { monitoringPolicy: string; fieldCheckInAllowed: boolean; gracePeriodMinutes: number };
@@ -112,6 +128,12 @@ export function MyDay() {
             <p className="text-sm text-slate-600">{mine.policy.monitoringPolicy || "Your company has not published a monitoring policy yet."}</p>
             <p className="mt-3 text-sm">Today: <strong>{presenceLabel[mine.presence] || mine.presence}</strong></p>
             <p className="mt-1 text-sm text-slate-600">Check-in {when(mine.day?.checkedInAt)} · Last seen {when(mine.day?.lastSeenAt)} · Check-out {when(mine.day?.checkedOutAt)}</p>
+            {mine.day?.source === "PHONE" ? (
+              <p className="mt-2 text-sm text-slate-600">
+                Phone check-in{mine.day.fieldSite ? ` at ${mine.day.fieldSite}` : ""}. {fieldReviewLabel[mine.day.fieldReview || ""] || ""}
+                {mine.day.fieldReviewNote ? ` Note: ${mine.day.fieldReviewNote}` : ""}
+              </p>
+            ) : null}
             {mine.presence === "AWAY" ? <p className="mt-2 text-sm text-slate-600">The card has been quiet for more than {mine.policy.gracePeriodMinutes} minutes. The gap is logged from this last-seen time until the next reading.</p> : null}
           </Panel>
           <Panel>

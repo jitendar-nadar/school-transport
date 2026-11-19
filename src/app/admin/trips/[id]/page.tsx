@@ -76,6 +76,22 @@ export default function TripDetailPage() {
         <Badge>{trip?.status}</Badge>
         {mapUrl ? <a className="text-sm text-brand-800 underline" href={mapUrl} target="_blank" rel="noreferrer">Open live location</a> : <span className="text-sm text-slate-500">Waiting for a GPS fix</span>}
       </div>
+      {trip ? (
+        <Panel>
+          <h3 className="mb-3 font-medium">Trip summary</h3>
+          <div className="grid gap-3 sm:grid-cols-4 text-sm">
+            <div className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-slate-500">Assigned</div><div className="text-xl font-semibold">{trip.totalAssignedStudents}</div></div>
+            <div className="rounded-lg bg-emerald-50 px-3 py-2"><div className="text-slate-500">Boarded</div><div className="text-xl font-semibold">{trip.totalBoarded}</div></div>
+            <div className="rounded-lg bg-brand-50 px-3 py-2"><div className="text-slate-500">Dropped</div><div className="text-xl font-semibold">{trip.totalDropped}</div></div>
+            <div className="rounded-lg bg-amber-50 px-3 py-2"><div className="text-slate-500">Not boarded</div><div className="text-xl font-semibold">{Math.max(0, trip.totalAssignedStudents - trip.totalBoarded)}</div></div>
+          </div>
+          <p className="mt-3 text-sm text-slate-500">
+            {students.filter((row) => row.boardingStatus === "BOARDED" && row.dropStatus !== "DROPPED").length
+              ? `${students.filter((row) => row.boardingStatus === "BOARDED" && row.dropStatus !== "DROPPED").length} still marked onboard.`
+              : "No students are still marked onboard."}
+          </p>
+        </Panel>
+      ) : null}
       <Panel>
         <DataTable
           columns={["Student", "Stop", "Boarding", "Drop-off", "Alerts"]}

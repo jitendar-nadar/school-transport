@@ -56,13 +56,15 @@ function EmployeeHome() {
 
 type SuppliedVehicle = { id: string; vehicleNumber: string; vehicleType: string; capacity: number; status: string; agencyName: string; agencyPhone: string };
 
+type CompanySummary = { departments: number; employees: number; openGaps: number; silentGateways: number; pendingFieldDays: number };
+
 function CompanyHome({ companyId, name }: { companyId?: string; name?: string }) {
-  const [summary, setSummary] = useState<{ departments: number; employees: number; openGaps: number } | null>(null);
+  const [summary, setSummary] = useState<CompanySummary | null>(null);
   const [supplied, setSupplied] = useState<SuppliedVehicle[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
     const query = companyId ? `?companyId=${companyId}` : "";
-    api<{ departments: number; employees: number; openGaps: number }>(`/api/v1/companies/summary${query}`, { school: false })
+    api<CompanySummary>(`/api/v1/companies/summary${query}`, { school: false })
       .then((result) => setSummary(result.data))
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the company."));
     api<SuppliedVehicle[]>(`/api/v1/agency-vehicles/supplied${query}`, { school: false })
@@ -79,6 +81,28 @@ function CompanyHome({ companyId, name }: { companyId?: string; name?: string })
           <StatCard label="Employees" value={summary.employees} icon={Briefcase} />
           <StatCard label="Open gaps" value={summary.openGaps} icon={CalendarClock} tone={summary.openGaps ? "amber" : "brand"} />
         </div>
+      ) : null}
+      {summary?.silentGateways || summary?.pendingFieldDays ? (
+        <Panel>
+          <div className="space-y-2 text-sm">
+            {summary.silentGateways ? (
+              <p className="flex items-center gap-2 text-amber-800">
+                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {summary.silentGateways} gateway{summary.silentGateways === 1 ? " has" : "s have"} not been heard from recently. Readings from that area may be missing.
+              </p>
+            ) : null}
+            {summary.pendingFieldDays ? (
+              <p className="flex items-center gap-2 text-slate-700">
+                <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {summary.pendingFieldDays} field check-in{summary.pendingFieldDays === 1 ? " is" : "s are"} waiting for HR approval.
+              </p>
+            ) : null}
+            <Link className="inline-flex items-center gap-1 font-medium text-brand-800 hover:underline" href="/admin/attendance">
+              Open attendance
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </Panel>
       ) : null}
       {supplied.length ? (
         <Panel>

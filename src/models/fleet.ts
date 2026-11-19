@@ -13,10 +13,15 @@ const vehicleSchema = new Schema(
     status: { type: String, enum: ["ACTIVE", "MAINTENANCE", "INACTIVE"], default: "ACTIVE" },
     agencyId: { type: Schema.Types.ObjectId, ref: "TransportAgency", default: null },
     agencyVehicleId: { type: Schema.Types.ObjectId, ref: "AgencyVehicle", default: null, index: true },
+    imei: { type: String, default: null, trim: true, uppercase: true },
   },
   { timestamps: true },
 );
 vehicleSchema.index({ schoolId: 1, vehicleNumber: 1 }, { unique: true });
+vehicleSchema.index(
+  { imei: 1 },
+  { unique: true, partialFilterExpression: { imei: { $type: "string" } } },
+);
 export const Vehicle = registerModel("Vehicle", vehicleSchema);
 
 const stopSchema = new Schema(

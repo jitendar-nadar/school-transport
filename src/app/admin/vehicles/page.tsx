@@ -14,6 +14,7 @@ type Vehicle = {
   vehicleNumber: string;
   vehicleType: string;
   capacity: number;
+  imei?: string | null;
   status: string;
   driverIds?: Array<{ id?: string } | string>;
   attendantIds?: Array<{ id?: string } | string>;
@@ -53,6 +54,7 @@ export default function VehiclesPage() {
           vehicleNumber: form.get("vehicleNumber"),
           vehicleType: form.get("vehicleType"),
           capacity: Number(form.get("capacity")),
+          imei: String(form.get("imei") || "").trim() || null,
           driverIds: form.getAll("driverIds").map(String).filter(Boolean),
           attendantIds: form.getAll("attendantIds").map(String).filter(Boolean),
         },
@@ -105,6 +107,11 @@ export default function VehiclesPage() {
             )}
           </Field>
           <Field label="Capacity"><input className={`${controlClass} read-only:bg-slate-50 read-only:text-slate-500`} name="capacity" type="number" min={1} defaultValue={editing?.capacity ?? ""} readOnly={Boolean(supplier)} required /></Field>
+          {supplier ? null : (
+            <Field label="Fixed tracker IMEI (optional)">
+              <input className={controlClass} name="imei" minLength={8} maxLength={20} defaultValue={editing?.imei || ""} placeholder="Digits only" />
+            </Field>
+          )}
           <SearchSelect
             key={`drivers-${editing?.id || "new"}-${formVersion}`}
             label="Drivers"

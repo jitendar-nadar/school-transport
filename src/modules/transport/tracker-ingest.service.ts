@@ -8,7 +8,6 @@ import { serialize } from "@/utils/serialize";
 import {
   MAX_INGEST_POINTS,
   dayBounds,
-  emptyMemory,
   motionStatus,
   nextAlerts,
   offlineDue,
@@ -307,6 +306,34 @@ export async function dailyFleetReport(user: AuthUser, fleetId: string | undefin
   });
 }
 
+function trackPayload(
+  truck: { _id: unknown; registrationNumber: string },
+  points: Array<{ latitude: number; longitude: number; speedKmh?: number; ignition?: boolean | null; recordedAt: Date }>,
+) {
+  const samples = samplesFrom(points);
+  const summary = summarizeTrack(samples);
+  return {
+    truckId: String(truck._id),
+    registrationNumber: truck.registrationNumber,
+    distanceKm: Math.round((summary.distanceMeters / 1000) * 10) / 10,
+    idleMinutes: summary.idleMinutes,
+    stoppages: summary.stoppages.map((stop) => ({
+      startedAt: new Date(stop.startedAt).toISOString(),
+      endedAt: new Date(stop.endedAt).toISOString(),
+      latitude: stop.latitude,
+      longitude: stop.longitude,
+    })),
+    stoppageCount: summary.stoppages.length,
+    points: points.map((point) => ({
+      latitude: point.latitude,
+      longitude: point.longitude,
+      speedKmh: point.speedKmh,
+      ignition: point.ignition,
+      recordedAt: new Date(point.recordedAt).toISOString(),
+    })),
+  };
+}
+
 export async function playback(user: AuthUser, fleetId: string | undefined, truckId: string, date: string) {
   const tenant = requireFleetId(user, fleetId);
   const truck = await Truck.findOne({ _id: truckId, fleetId: tenant }).lean();
@@ -318,20 +345,101 @@ export async function playback(user: AuthUser, fleetId: string | undefined, truc
     truckId: truck._id,
     recordedAt: { $gte: bounds.start, $lt: bounds.end },
   }).sort({ recordedAt: 1 }).lean();
-  const samples = samplesFrom(points);
-  const summary = summarizeTrack(samples);
+  const track = trackPayload(truck, points);
   return {
-    truckId: String(truck._id),
-    registrationNumber: truck.registrationNumber,
-    distanceKm: Math.round((summary.distanceMeters / 1000) * 10) / 10,
-    idleMinutes: summary.idleMinutes,
-    stoppages: summary.stoppages.length,
-    points: points.map((point) => ({
-      latitude: point.latitude,
-      longitude: point.longitude,
-      speedKmh: point.speedKmh,
-      ignition: point.ignition,
-      recordedAt: new Date(point.recordedAt).toISOString(),
-    })),
+    truckId: track.truckId,
+    registrationNumber: track.registrationNumber,
+    distanceKm: track.distanceKm,
+    idleMinutes: track.idleMinutes,
+    stoppages: track.stoppageCount,
+    points: track.points,
+  };
+}
+
+function tripTimeWindow(trip: { startedAt?: Date | null; endedAt?: Date | null; status: string }) {
+  if (!trip.startedAt) return null;
+  const start = new Date(trip.startedAt);
+  const end = trip.endedAt ? new Date(trip.endedAt) : new Date();
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() < start.getTime()) return null;
+  return { start, end };
+}
+
+export async function listTripHistory(
+  user: AuthUser,
+  query: { page: number; limit: number; fleetId?: string; truckId?: string; status?: string },
+) {
+  const tenant = requireFleetId(user, query.fleetId);
+  const filter: Record<string, unknown> = {
+    fleetId: tenant,
+    status: { $in: ["ACTIVE", "COMPLETED", "CANCELLED"] },
+    startedAt: { $ne: null },
+  };
+  if (query.truckId) filter.truckId = query.truckId;
+  if (query.status && ["ACTIVE", "COMPLETED", "CANCELLED"].includes(query.status)) {
+    filter.status = query.status;
+  }
+  const total = await FleetTrip.countDocuments(filter);
+  const rows = await FleetTrip.find(filter)
+    .sort({ startedAt: -1 })
+    .skip((query.page - 1) * query.limit)
+    .limit(query.limit)
+    .populate({ path: "truckId", select: "registrationNumber" })
+    .lean();
+  return {
+    items: rows.map((row) => serialize(row)),
+    meta: { page: query.page, limit: query.limit, total, totalPages: Math.max(1, Math.ceil(total / query.limit)) },
+  };
+}
+
+export async function tripReport(user: AuthUser, tripId: string, fleetId?: string) {
+  const tenant = requireFleetId(user, fleetId);
+  const trip = await FleetTrip.findOne({ _id: tripId, fleetId: tenant }).lean();
+  if (!trip) throw notFound("Trip");
+  const truck = await Truck.findOne({ _id: trip.truckId, fleetId: tenant }).lean();
+  if (!truck) throw notFound("Truck");
+
+  const window = tripTimeWindow(trip);
+  const points = window
+    ? await TrackerPoint.find({
+        fleetId: tenant,
+        truckId: trip.truckId,
+        recordedAt: { $gte: window.start, $lte: window.end },
+      })
+        .sort({ recordedAt: 1 })
+        .lean()
+    : [];
+  const track = trackPayload(truck, points);
+  const alerts = window
+    ? await FleetAlert.find({
+        fleetId: tenant,
+        truckId: trip.truckId,
+        recordedAt: { $gte: window.start, $lte: window.end },
+      })
+        .sort({ recordedAt: 1 })
+        .lean()
+    : [];
+
+  return {
+    trip: {
+      id: String(trip._id),
+      origin: trip.origin,
+      destination: trip.destination,
+      status: trip.status,
+      startedAt: trip.startedAt ? new Date(trip.startedAt).toISOString() : null,
+      endedAt: trip.endedAt ? new Date(trip.endedAt).toISOString() : null,
+      route: ((trip.route || []) as Array<{ latitude: number; longitude: number; label?: string }>).map((stop) => ({
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        label: stop.label || "",
+      })),
+    },
+    truckId: track.truckId,
+    registrationNumber: track.registrationNumber,
+    distanceKm: track.distanceKm,
+    idleMinutes: track.idleMinutes,
+    stoppages: track.stoppages,
+    stoppageCount: track.stoppageCount,
+    points: track.points,
+    alerts: alerts.map((alert) => serialize(alert)),
   };
 }

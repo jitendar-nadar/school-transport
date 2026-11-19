@@ -1,7 +1,7 @@
 import { Types, type PipelineStage } from "mongoose";
 import { z } from "zod";
 import { requireSchoolId } from "@/lib/auth/guard";
-import { AppError, notFound } from "@/lib/errors/app-error";
+import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
 import { Assignment, Route, Stop, Vehicle } from "@/models/fleet";
 import { Student } from "@/models/student";
@@ -16,6 +16,18 @@ import { fromPoint, toPoint } from "@/utils/geo";
 
 const optionalIds = z.array(objectIdSchema).optional().default([]);
 
+const imeiField = z
+  .string()
+  .trim()
+  .max(20)
+  .optional()
+  .transform((value) => {
+    if (!value) return null;
+    const cleaned = value.replace(/\s+/g, "").toUpperCase();
+    return cleaned || null;
+  })
+  .refine((value) => value == null || /^\d{8,20}$/.test(value), "IMEI must be 8 to 20 digits.");
+
 export const vehicleSchema = z.object({
   schoolId: objectIdSchema.optional(),
   vehicleNumber: z.string().trim().min(1).max(30),
@@ -25,6 +37,7 @@ export const vehicleSchema = z.object({
   attendantIds: optionalIds,
   studentIds: optionalIds,
   status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
+  imei: imeiField,
 });
 export const updateVehicleSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -35,6 +48,7 @@ export const updateVehicleSchema = z.object({
   attendantIds: z.array(objectIdSchema).optional(),
   studentIds: z.array(objectIdSchema).optional(),
   status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
+  imei: imeiField,
 });
 
 export const stopSchema = z.object({
@@ -217,8 +231,17 @@ export async function createVehicle(user: AuthUser, input: z.infer<typeof vehicl
   const schoolId = requireSchoolId(user, input.schoolId);
   await assertCrew(schoolId, input.driverIds, "DRIVER");
   await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
-  const vehicle = await Vehicle.create({ ...input, schoolId, studentIds: [], status: input.status ?? "ACTIVE" });
-  return serialize(vehicle.toObject());
+  try {
+    const vehicle = await Vehicle.create({ ...input, schoolId, studentIds: [], status: input.status ?? "ACTIVE", imei: input.imei ?? null });
+    return serialize(vehicle.toObject());
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      throw new AppError(409, "IMEI_TAKEN", "That tracker IMEI is already paired to a vehicle.", {
+        fieldErrors: { imei: ["That tracker IMEI is already paired to a vehicle."] },
+      });
+    }
+    throw error;
+  }
 }
 
 export async function updateVehicle(user: AuthUser, id: string, input: z.infer<typeof updateVehicleSchema>) {
@@ -250,8 +273,18 @@ export async function updateVehicle(user: AuthUser, id: string, input: z.infer<t
     attendantIds: input.attendantIds ?? vehicle.attendantIds,
     studentIds: input.studentIds ?? vehicle.studentIds,
     status: input.status ?? vehicle.status,
+    imei: input.imei !== undefined ? input.imei : vehicle.imei,
   });
-  await vehicle.save();
+  try {
+    await vehicle.save();
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      throw new AppError(409, "IMEI_TAKEN", "That tracker IMEI is already paired to a vehicle.", {
+        fieldErrors: { imei: ["That tracker IMEI is already paired to a vehicle."] },
+      });
+    }
+    throw error;
+  }
   return serialize(vehicle.toObject());
 }
 

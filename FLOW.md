@@ -66,7 +66,7 @@ Walk the sidebar in this order. Each step depends on the one before it. A platfo
 9. **Routes** — direction `PICKUP` or `DROP`, vehicle, ordered stops, and `HH:mm` times.
 10. **Assignments** — which student rides which route and stop. This is what puts them on a trip roster.
 11. **Trips** — empty until a driver starts one. These are daily school-bus trips.
-12. **Tours** — a picnic or outing on a date, then a headcount. A tour is not a daily bus trip.
+12. **Tours** — a picnic or outing on a date with buses, coordinators, student roster, BLE headcounts, found/missing alerts, and an end report. A tour is not a daily bus trip.
 13. **Alerts** — empty until a trip event creates a notification.
 
 Seeded records for ABC Public School:
@@ -85,30 +85,26 @@ Only the driver or attendant assigned to `BUS-4` can run this. The admin watches
 
 1. Driver signs in as `driver@abc.school` and loads today’s assignment: Morning North / `BUS-4`.
 2. Driver starts the trip. The API snapshots Aarav onto the roster at Gokul Nagar. Later route edits do not change this trip. `BUS-4` cannot start a second trip while this one is active.
-3. Driver sends GPS. The latest point is kept for the live location. A point is skipped when the bus has barely moved, and a point faster than 180 km/h is rejected. MongoDB history is sampled, not every ping.
-4. Near Gokul Nagar, the parent can get **bus approaching pickup**.
-5. The bus reads `BLE_CARD_1025`. The roster becomes **detected**. A card read never means boarded.
-6. Attendant confirms boarding as `MANUAL`, `ASSISTED`, or `OVERRIDE`.
-   - Assisted is allowed only when that card was seen recently, with a strong enough signal, near Gokul Nagar.
-   - Override needs a written reason and is audited.
-7. Roster becomes **boarded**. Parent gets **boarding confirmed**. Overview shows 1 on board.
-8. Bus reaches school. Parent gets **bus arrived at school**.
-9. Attendant confirms the school drop. Roster becomes **dropped**. Parent gets **dropped at school**.
-10. Driver ends the trip. End is refused with `CHILD_STILL_ON_BUS` while Aarav is still boarded. A written override can end the trip, but it does not clear the onboard state, and it sends **child still on bus**.
-11. Ending the trip removes the live location. **Trips** shows the finished trip. **Alerts** shows the notification history.
+3. Driver sends GPS (phone), or a fixed bus tracker posts to `POST /api/v1/school-buses/ingest` with `x-school-bus-key` when the vehicle has an IMEI on **Vehicles**. The latest point is kept for the live location. A point is skipped when the bus has barely moved, and a point faster than 180 km/h is rejected. MongoDB history is sampled, not every ping. Over-speed, long stop, and route deviation raise staff alerts.
+4. When the bus is about five minutes from Gokul Nagar (from distance and speed), the parent gets **bus approaching pickup**. A close geofence still alerts if ETA is unclear.
+5. The bus reads `BLE_CARD_1025`. The roster becomes **detected**. If the read is recent, strong, and near Gokul Nagar, boarding is confirmed automatically as **assisted**. Otherwise the attendant confirms as `MANUAL`, `ASSISTED`, or `OVERRIDE` (override needs a written reason and is audited).
+6. Roster becomes **boarded**. Parent gets **boarding confirmed**. Overview shows 1 on board.
+7. Bus reaches school. Parents of boarded students get **reached school**. Staff get **bus arrived at school**. Boarded students can be auto-dropped at the school geofence; the attendant can still confirm manually.
+8. Driver ends the trip. End is refused with `CHILD_STILL_ON_BUS` while Aarav is still boarded. A written override can end the trip, but it does not clear the onboard state, and it sends **child still on bus** to parents, the driver, the attendant, and school admins.
+9. Ending the trip removes the live location. **Trips** shows the finished trip with a summary (assigned / boarded / dropped / not boarded). **Alerts** shows the notification history.
 
 ## 5. What the admin checks during the trip
 
 1. **Overview** — active trips becomes 1, on board becomes 1 after boarding, then 0 after drop-off.
 2. **Trips** — open the active trip. The page refreshes about every 8 seconds.
-3. On the trip page, confirm Aarav’s state (assigned, then detected, boarded, and dropped), the event list, and that the bus location is updating.
-4. **Alerts** — approaching, boarded, arrived, and dropped rows for Aarav. Push needs Firebase. The rows on this screen are stored either way.
+3. On the trip page, confirm the **Trip summary** counts, Aarav’s state (assigned, then detected, boarded, and dropped), the event list, and that the bus location is updating.
+4. **Alerts** — approaching (with ETA when known), boarded, arrived, dropped, and any over-speed / long stop / route deviation rows. Push needs Firebase. The rows on this screen are stored either way.
 
 ## 6. What the parent sees
 
 1. Parent signs in as `parent@abc.school` and sees only Aarav.
 2. While the trip is active, status follows the roster.
-3. Live location is granted only for this trip, and only for a parent linked to a child on that trip. Ending the trip removes that access.
+3. Live location is granted only for this trip, and only for a parent linked to a child on that trip. The live-access reply includes an ETA to the child’s stop when GPS is available. Ending the trip removes that access.
 4. Notification history matches **Alerts**, limited to Aarav. Consent must stay granted. Without it Aarav still rides, but those alerts are not sent.
 
 ## 7. Ride home
@@ -121,7 +117,7 @@ The seed has the pickup route only. Add the drop route, its stops, and Aarav’s
 
 1. End the trip while Aarav is still boarded. Expect `CHILD_STILL_ON_BUS` and no ended trip.
 2. Drop Aarav at a stop that is not Gokul Nagar without an override reason. Expect a rejection. With a reason, the drop is stored and audited as the wrong stop.
-3. Send a card read and look at the roster before anyone confirms. The state stays **detected**, not boarded.
+3. Send a weak or far card read and look at the roster. The state stays **detected**, not boarded, until a strong near-stop read auto-boards or the attendant confirms.
 
 ## 9. School gates, classes, and tours
 
@@ -129,9 +125,14 @@ Stay signed in as the school admin, or as the platform admin with **ABC Public S
 
 1. Open **Classes**. Add class `4` and division `A`. The row is stored on the school.
 2. Open **Gates**. Add `Main gate`.
-3. Open **Tours**. Add a tour name and date, for example `Science museum` on tomorrow’s date.
-4. On the same page, choose that tour, enter how many students are present, and an optional note. Click **Record headcount**.
-5. The headcount list shows the tour name, the count, and the note. A missing student on a tour is a later alert. This screen only stores the count you enter.
+3. Under **Gate nodes**, add an **Outside** node and an **Inside** node for that gate, each with a unique hardware id. Real devices post to `POST /api/v1/gate-nodes/ingest` with header `x-gate-node-key` (`SCHOOL_GATE_INGEST_SECRET`, or `GATEWAY_INGEST_SECRET` if the school secret is unset).
+4. Set **Gate rules**: arrival cut-off, school end time, debounce minutes (ignore repeats near the gate), and the pair window (how long both nodes may take to hear the card). Save the rules.
+5. When a student walks through, outside then inside records **Entry**; inside then outside records **Exit**. Parents get a push such as “Aarav entered school at 7:52 AM”. The live board shows **In campus**, **Not arrived** (after cut-off), and **Left early**.
+6. Use **Manual entry / exit** when a card is forgotten or dead — choose the student, direction, and a reason.
+7. After cut-off, **Send absence alerts** notifies parents of students with no entry that day.
+8. Open **Tours**. Create a tour with name, date, watch minutes, optional trip lead, and one or more buses. Each bus needs a vehicle, coordinators, and students (a student can sit on only one bus).
+9. Click the tour name to open the live board. Advance status with **Mark Departed**, **At destination**, **Returning**, then **Completed**. Parents get a status push at each of those steps.
+10. Record a **Manual headcount** for a bus (admin fallback), or have a coordinator phone call POST /api/v1/tours/:id/headcounts with BLE detections. Present / missing / wrong-bus students update on the roster; missing and wrong-bus create incidents and staff alerts. Use **Found** / **Missing** on a row when needed. At the destination, **Run watch check** flags students whose last-seen is older than the watch window. **Refresh report** shows end-of-tour totals. Coordinator download package: GET /api/v1/tours/:id/download.
 
 ## 10. Company attendance
 
@@ -215,12 +216,21 @@ Alerts are written as the points are applied, in recorded order. The list under 
 
 ### Reports
 
-Open **Reports** and pick a date. The day is India time.
+Open **Reports**. Use **Daily** or **Trips**. The day is India time.
 
-1. Each truck shows distance in km, idle minutes, and how many stoppages were recorded.
+**Daily**
+
+1. Pick a date. Each truck shows distance in km, idle minutes, and how many stoppages were recorded.
 2. Idle time is the engine-on time below 5 km/h. A gap longer than 30 minutes is treated as offline and is not added to distance or idle.
 3. A stoppage is a stopped stretch of at least 2 minutes.
-4. Click **Play route**. The map draws that day’s points in order.
+4. Click **Play route**. The map draws that day's points in order.
+
+**Trips**
+
+1. The list shows trips that were started (active, completed, or cancelled), with truck, status, and start/end times.
+2. Click **Open trip**. Distance, idle time, stoppages, and alerts are calculated only between that trip's start and end (active trips use now as the end).
+3. The map plays back that trip's path. Points outside the trip window are not included.
+4. APIs: `GET /api/v1/fleet-reports/trips` for history, `GET /api/v1/fleet-reports/trips/:id` for the trip report, and `GET /api/v1/fleet-reports/playback?tripId=` for the same path.
 
 A tracker in the cab that reads a driver BLE card is not part of this flow. School cards stay on the school path.
 
@@ -228,8 +238,8 @@ A tracker in the cab that reads a driver BLE card is not part of this flow. Scho
 
 Stay signed in as the company admin. Open **Attendance**.
 
-1. Set the grace period, shift, lunch, and review window. Write the monitoring policy. Save the rules. Attendance readings are refused until this policy is saved.
-2. Add office gateways for the floor, meeting rooms, cafeteria, and corridors you have actually surveyed. A dead zone will look like personal time.
+1. Set the grace period, shift, lunch, review window, and and **Gateway silent after (minutes)** (default 30). Write the monitoring policy. Save the rules. Attendance readings are refused until this policy is saved.
+2. Add office gateways for the floor, meeting rooms, cafeteria, and corridors you have actually surveyed. A dead zone will look like personal time. Optionally set a **Minimum signal** (dBm, -110 to -30): weaker readings are kept for audit but never count as presence, so a card heard through a wall is not "in office". **Edit** in the gateway table changes the name, place, floor, min signal, or status.
 3. Open **Cards and consent**. Pick the employee (or click **Edit** in the list), assign a card id, mark office or field, and tick written consent. Optionally set a login email and password so the employee can open **My day**.
 4. Back on **Attendance**, record a detection: gateway, card id, and time. The first reading of the day is check-in and the employee shows **In office**.
 5. Record another reading more than the grace period later. The time from the last reading to this one is an out-of-office gap, status **In review**. It is not personal time yet.
@@ -237,6 +247,21 @@ Stay signed in as the company admin. Open **Attendance**.
 7. The company admin approves or rejects it. Approved time stays on duty. Rejected time becomes personal time. An open gap that nobody reviews becomes personal time only after the review window.
 8. After the shift end plus the grace period, the last card reading is check-out. **Load report** shows working hours, personal hours, pending review, late arrivals, and early exits. **Download CSV** is the payroll export.
 9. Field staff, when phone check-in is allowed and their work mode is Field, check in and out from **My day** with latitude and longitude. That path does not use a gateway.
+   - Under **Field sites**, add named sites with a radius (25 to 5000 m). Once any site exists, a check-in outside every site's radius is refused. The day records which site was matched.
+   - Tick **HR approves each phone check-in day before it counts** in the rules to hold phone days for approval. They appear under **Field check-ins waiting for approval**; approve or reject (a reject needs a note). Pending days are reported as pending, rejected days are left out of working hours, and the employee sees the result on **My day**.
+
+### Gateways in production
+
+A real gateway posts to `POST /api/v1/gateways/ingest` with the `x-gateway-key` header (the `GATEWAY_INGEST_SECRET` environment variable; without it every call returns 401).
+
+- **Batch**: send up to 500 `readings` (card id, time, signal) in one request. The reply counts applied, late, duplicate, ignored, and rejected readings, with a result per reading.
+- **Heartbeat**: a call with no readings only marks the gateway as heard.
+- **Late readings**: a reading older than the last one already applied (for example, sent after the gateway was offline) is still used. If it falls inside an open or disputed gap, the gap is shrunk or split in two. If it is before check-in, check-in moves earlier. The same reading sent twice counts once. Readings more than 7 days old or more than a minute in the future are refused.
+- **Health**: the gateway table shows **Last heard** and a badge: **Online**, **Silent** (no contact for longer than the silent-after minutes), or **Never heard**. Silent gateways also show a warning on **Attendance** and on the company **Overview**, since missing readings there would look like out-of-office time.
+
+### HR reviewers
+
+Under **HR reviewers**, add a reviewer and optionally choose **Departments they review**. A scoped reviewer only sees, reviews, and reports on employees in those departments; a gap or field day outside them is refused. No departments means the whole company. **Edit** changes a reviewer's name, departments, or status. Reviewers cannot add gateways, record detections, or change rules.
 
 ## 13. Billing
 

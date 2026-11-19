@@ -19,6 +19,17 @@ const companySchema = new Schema(
     pilotOneFloor: { type: Boolean, default: false },
     reviewWindowHours: { type: Number, default: 48, min: 1 },
     fieldCheckInAllowed: { type: Boolean, default: false },
+    fieldApprovalRequired: { type: Boolean, default: false },
+    fieldSites: {
+      type: [new Schema({
+        name: { type: String, required: true, trim: true },
+        latitude: { type: Number, required: true },
+        longitude: { type: Number, required: true },
+        radiusMeters: { type: Number, required: true, min: 25 },
+      }, { _id: false })],
+      default: [],
+    },
+    gatewaySilentMinutes: { type: Number, default: 30, min: 5 },
     monitoringPolicy: { type: String, default: "" },
     status: { type: String, enum: ["TRIAL", "ACTIVE", "SUSPENDED"], default: "TRIAL" },
   },

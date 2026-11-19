@@ -5,12 +5,14 @@ import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
 import { objectIdSchema, passwordSchema } from "@/lib/validation/common";
 import { BleTag } from "@/models/ble-tag";
+import { AttendanceDay } from "@/models/attendance";
 import { AttendanceGap, Company, Department, Employee } from "@/models/company";
+import { Gateway } from "@/models/platform-events";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
-import { describeGap, parseOfficeTime, policyFrom } from "@/modules/companies/attendance-rules";
+import { describeGap, gatewayHealth, parseOfficeTime, policyFrom } from "@/modules/companies/attendance-rules";
 import { escapeRegex, searchClause, serialize } from "@/utils/serialize";
 
 const statusSchema = z.enum(["TRIAL", "ACTIVE", "SUSPENDED"]);
@@ -269,10 +271,19 @@ export async function deleteGap(user: AuthUser, id: string, companyId?: string) 
 
 export async function companySummary(user: AuthUser, companyId?: string) {
   const tenant = requireCompanyId(user, companyId);
-  const [departments, employees, openGaps] = await Promise.all([
+  const [company, departments, employees, openGaps, gateways, pendingFieldDays] = await Promise.all([
+    Company.findById(tenant).lean(),
     Department.countDocuments({ companyId: tenant }),
     Employee.countDocuments({ companyId: tenant, status: "ACTIVE" }),
     AttendanceGap.countDocuments({ companyId: tenant, status: "OPEN" }),
+    Gateway.find({ ownerType: "COMPANY", ownerId: tenant, kind: "OFFICE", status: "ACTIVE" }, "lastContactAt").lean(),
+    AttendanceDay.countDocuments({ companyId: tenant, source: "PHONE", fieldReview: "PENDING" }),
   ]);
-  return { departments, employees, openGaps };
+  if (!company) throw notFound("Company");
+  const silentMinutes = policyFrom(company).gatewaySilentMinutes;
+  const now = new Date();
+  const silentGateways = gateways
+    .filter((gateway) => gatewayHealth(gateway.lastContactAt ? new Date(gateway.lastContactAt) : null, now, silentMinutes) !== "ONLINE")
+    .length;
+  return { departments, employees, openGaps, silentGateways, pendingFieldDays };
 }

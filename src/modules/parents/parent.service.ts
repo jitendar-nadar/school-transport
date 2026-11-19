@@ -110,12 +110,37 @@ export async function parentLiveAccess(user: AuthUser, input: z.infer<typeof liv
   if (!granted || !customToken) {
     throw new AppError(503, "FIREBASE_NOT_CONFIGURED", "Live tracking is not configured on the server yet.");
   }
+
+  const { readActiveTrip } = await import("@/lib/firebase/admin");
+  const { etaMinutes } = await import("@/modules/trips/bus-tracking-rules");
+  const { fromPoint, distanceMeters } = await import("@/utils/geo");
+  const { Stop } = await import("@/models/fleet");
+  const live = await readActiveTrip(String(trip._id));
+  let eta: { etaMinutes: number; distanceMeters: number; stopName: string } | null = null;
+  if (row.assignedStopId) {
+    const stop = await Stop.findById(row.assignedStopId).lean();
+    const stopPoint = fromPoint(stop?.location);
+    const busPoint = live
+      ? { latitude: live.latitude, longitude: live.longitude }
+      : fromPoint(trip.lastKnownLocation);
+    if (stop && stopPoint && busPoint) {
+      const distance = distanceMeters(busPoint, stopPoint);
+      eta = {
+        etaMinutes: etaMinutes(distance, live?.speedKmh ?? trip.lastKnownLocation?.speedKmh),
+        distanceMeters: Math.round(distance),
+        stopName: stop.name || "Stop",
+      };
+    }
+  }
+
   return {
     customToken,
     databaseURL: process.env.FIREBASE_DATABASE_URL,
     path: `activeTrips/${String(trip._id)}`,
     uid,
     expiresIn: 3600,
+    eta,
+    liveLocation: live,
   };
 }
 

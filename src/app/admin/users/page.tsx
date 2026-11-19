@@ -16,7 +16,7 @@ export default function UsersPage() {
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Person | null>(null);
-  const roles = ["SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT"];
+  const roles = ["SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "TOUR_COORDINATOR", "PARENT"];
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

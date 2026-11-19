@@ -15,6 +15,14 @@ const SAFETY_TYPES = new Set([
   "STUDENT_WRONG_STOP",
   "BUS_TRACKING_OFFLINE",
   "STUDENT_NOT_BOARDED",
+  "STUDENT_ABSENT_FROM_SCHOOL",
+  "STUDENT_LEFT_EARLY",
+  "BUS_OVERSPEED",
+  "BUS_LONG_STOP",
+  "BUS_ROUTE_DEVIATION",
+  "TOUR_STUDENT_MISSING",
+  "TOUR_STUDENT_FOUND",
+  "TOUR_STUDENT_WRONG_BUS",
 ]);
 
 export function describeEvent(body: string, historical: boolean, occurredAt: Date, timeZone: string) {

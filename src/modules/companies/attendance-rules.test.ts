@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  belowSignal,
+  dayCounts,
+  gatewayHealth,
+  matchSite,
+  splitGapAt,
   describeGap,
   exceedsGrace,
   gapOutcome,
@@ -90,5 +95,62 @@ describe("office attendance rules", () => {
     assert.equal(shouldCloseDay("2026-10-15", after, "18:30", 15), true);
     assert.equal(shouldCloseDay("2026-10-17", after, "18:30", 15), false);
     assert.equal(parseClock("25:00"), null);
+  });
+});
+
+describe("late gateway readings", () => {
+  const at = (time: string) => parseOfficeTime(`2026-10-16T${time}`) as Date;
+  const gap = { startedAt: at("10:00"), endedAt: at("11:00") };
+
+  it("splits a gap when a late reading lands in the middle", () => {
+    const pieces = splitGapAt(gap, at("10:30"), 15);
+    assert.deepEqual(pieces.map((piece) => [piece.startedAt.getTime(), piece.endedAt.getTime()]), [
+      [at("10:00").getTime(), at("10:30").getTime()],
+      [at("10:30").getTime(), at("11:00").getTime()],
+    ]);
+  });
+
+  it("drops a piece that is now within the grace period", () => {
+    const pieces = splitGapAt(gap, at("10:50"), 15);
+    assert.equal(pieces.length, 1);
+    assert.equal(pieces[0].endedAt.getTime(), at("10:50").getTime());
+    assert.equal(splitGapAt({ startedAt: at("10:00"), endedAt: at("10:25") }, at("10:12"), 15).length, 0);
+  });
+
+  it("leaves the gap alone when the reading is outside it", () => {
+    assert.deepEqual(splitGapAt(gap, at("09:50"), 15), [gap]);
+    assert.deepEqual(splitGapAt(gap, at("11:00"), 15), [gap]);
+  });
+});
+
+describe("gateways and field check-in", () => {
+  it("reports gateway health from the last contact", () => {
+    const now = new Date("2026-10-16T06:00:00Z");
+    assert.equal(gatewayHealth(null, now, 30), "NEVER");
+    assert.equal(gatewayHealth(new Date("2026-10-16T05:45:00Z"), now, 30), "ONLINE");
+    assert.equal(gatewayHealth(new Date("2026-10-16T05:20:00Z"), now, 30), "SILENT");
+  });
+
+  it("ignores only readings weaker than the gateway minimum", () => {
+    assert.equal(belowSignal(-90, -80), true);
+    assert.equal(belowSignal(-70, -80), false);
+    assert.equal(belowSignal(null, -80), false);
+    assert.equal(belowSignal(-90, null), false);
+  });
+
+  it("matches the nearest allowed site within its radius", () => {
+    const sites = [
+      { name: "Client A", latitude: 19.076, longitude: 72.8777, radiusMeters: 200 },
+      { name: "Client B", latitude: 19.0765, longitude: 72.8777, radiusMeters: 200 },
+    ];
+    assert.equal(matchSite(sites, { latitude: 19.0764, longitude: 72.8777 })?.site.name, "Client B");
+    assert.equal(matchSite(sites, { latitude: 19.2, longitude: 72.9 }), null);
+  });
+
+  it("counts a phone day only once it is approved or needs no approval", () => {
+    assert.equal(dayCounts({ source: "GATEWAY" }), "WORKING");
+    assert.equal(dayCounts({ source: "PHONE", fieldReview: "NOT_REQUIRED" }), "WORKING");
+    assert.equal(dayCounts({ source: "PHONE", fieldReview: "PENDING" }), "PENDING");
+    assert.equal(dayCounts({ source: "PHONE", fieldReview: "REJECTED" }), "EXCLUDED");
   });
 });

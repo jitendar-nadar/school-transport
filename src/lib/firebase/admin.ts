@@ -69,6 +69,7 @@ export type LiveTripLocation = {
   accuracyMeters: number;
   updatedAt: number;
   status: "ACTIVE";
+  etas?: Array<{ studentId: string; stopId: string; stopName: string; etaMinutes: number; distanceMeters: number }>;
 };
 
 export async function writeActiveTrip(tripId: string, location: LiveTripLocation) {

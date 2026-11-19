@@ -31,6 +31,10 @@ const tripSchema = new Schema(
     lastKnownLocation: { type: locationSnapshot, default: undefined },
     schoolArrivalAt: { type: Date, default: null },
     safetyOverrideReason: { type: String, default: "" },
+    stoppedSince: { type: Date, default: null },
+    overspeedAlerted: { type: Boolean, default: false },
+    longStopAlerted: { type: Boolean, default: false },
+    routeDeviationAlerted: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
