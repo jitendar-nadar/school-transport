@@ -224,6 +224,12 @@ Driver and attendant only, and only for a vehicle they are assigned to.
 | POST | `/trips/:id/sync` | Replay offline events in `occurredAt` order |
 | POST | `/trips/:id/end` | End the trip |
 
+`GET /driver/assignments/today` returns each route's ordered `stops` as stop
+objects, including `id`, `name`, `address`, `latitude`, and `longitude`.
+`POST /trips/start` and `GET /trips/:id/roster` include the same coordinate
+fields on each populated `assignedStopId`, so mobile trip screens can show the
+live vehicle position alongside stop markers.
+
 Start:
 
 ```json

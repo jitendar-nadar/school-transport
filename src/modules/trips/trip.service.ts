@@ -133,7 +133,9 @@ export async function driverToday(user: AuthUser) {
     schoolId,
     status: "ACTIVE",
     vehicleId: { $in: vehicles.map((vehicle: { _id: unknown }) => vehicle._id) },
-  }).lean();
+  })
+    .populate("stops", "name address location stopType")
+    .lean();
   const trips = await Trip.find({
     schoolId,
     scheduledDate: date,
@@ -144,7 +146,10 @@ export async function driverToday(user: AuthUser) {
   return {
     date,
     vehicles: vehicles.map((item) => serialize(item)),
-    routes: routes.map((item) => serialize(item)),
+    routes: routes.map((item) => ({
+      ...(serialize(item) as Record<string, unknown>),
+      stops: (item.stops || []).map(presentStop),
+    })),
     trips: trips.map((item) => serialize(item)),
   };
 }
@@ -275,9 +280,18 @@ export async function startTrip(user: AuthUser, input: z.infer<typeof startTripS
 export async function rosterFor(tripId: string) {
   const rows = await TripStudent.find({ tripId })
     .populate("studentId", "name studentCode className division photoUrl parentConsent")
-    .populate("assignedStopId", "name address")
+    .populate("assignedStopId", "name address location stopType")
     .lean();
-  return rows.map((row) => serialize(row));
+  return rows.map((row) => ({
+    ...(serialize(row) as Record<string, unknown>),
+    assignedStopId: row.assignedStopId ? presentStop(row.assignedStopId) : null,
+  }));
+}
+
+function presentStop(stop: unknown) {
+  const data = serialize(stop) as { location?: { coordinates?: number[] } };
+  const point = fromPoint(data.location);
+  return { ...data, latitude: point?.latitude ?? null, longitude: point?.longitude ?? null };
 }
 
 export async function getRoster(user: AuthUser, tripId: string) {
