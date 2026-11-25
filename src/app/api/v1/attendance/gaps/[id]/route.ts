@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const PATCH = apiHandler(async ({ req, user, params }) => {
   const input = await readJson(req, reviewSchema);
   return ok(await reviewGap(user, params.id, input));
-}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN, ROLES.EMPLOYEE] });
+}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.COMPANY_ADMIN, ROLES.COMPANY_HR, ROLES.EMPLOYEE] });
 
 export const DELETE = apiHandler(async ({ req, user, params }) => {
   const query = readQuery(req, listQuerySchema);

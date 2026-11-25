@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/tokens";
 import { requireFleetId } from "@/lib/auth/guard";
-import { AppError, notFound } from "@/lib/errors/app-error";
+import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
-import { passwordSchema } from "@/lib/validation/common";
+import { objectIdSchema, passwordSchema } from "@/lib/validation/common";
 import { FleetAccount, FleetGeofence, FleetTrip, Tracker, Truck } from "@/models/carrier";
+import { latLngSchema } from "@/lib/validation/common";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
@@ -15,7 +16,7 @@ const statusSchema = z.enum(["TRIAL", "ACTIVE", "SUSPENDED"]);
 
 export const createFleetSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters."),
-  fleetCode: z.string().trim().min(2, "Fleet code must be at least 2 characters.").max(20),
+  fleetCode: z.string().trim().min(2, "Code must be at least 2 characters.").max(20),
   address: z.string().trim().max(300).optional().default(""),
   contactEmail: z.email("Enter a valid email address."),
   contactPhone: z.string().trim().min(8, "Phone must be at least 8 digits.").max(20),
@@ -28,6 +29,12 @@ export const createTruckSchema = z.object({
   fleetId: z.string().regex(/^[a-f\d]{24}$/i, "Choose a fleet."),
   registrationNumber: z.string().trim().min(2, "Enter the vehicle number.").max(20),
   imei: z.string().trim().min(8, "Enter the tracker IMEI.").max(32),
+  certification: z.enum(["STANDARD", "AIS140"]).optional().default("STANDARD"),
+});
+
+const routePointSchema = z.object({
+  ...latLngSchema,
+  label: z.string().trim().max(300).optional().default(""),
 });
 
 export const createFleetTripSchema = z.object({
@@ -35,6 +42,12 @@ export const createFleetTripSchema = z.object({
   truckId: z.string().regex(/^[a-f\d]{24}$/i, "Choose a truck."),
   origin: z.string().trim().min(2, "Enter the origin."),
   destination: z.string().trim().min(2, "Enter the destination."),
+  route: z.array(routePointSchema).max(50).optional().default([]),
+});
+
+export const fleetTripStatusSchema = z.object({
+  fleetId: z.string().regex(/^[a-f\d]{24}$/i, "Choose a fleet."),
+  status: z.enum(["ACTIVE", "COMPLETED", "CANCELLED"]),
 });
 
 export const createGeofenceSchema = z.object({
@@ -42,6 +55,8 @@ export const createGeofenceSchema = z.object({
   name: z.string().trim().min(2, "Enter a place name."),
   kind: z.enum(["DEPOT", "CUSTOMER"]),
   address: z.string().trim().max(300).optional().default(""),
+  ...latLngSchema,
+  radiusMeters: z.coerce.number().int().min(30).max(5000).optional().default(150),
 });
 
 export async function listFleets(user: AuthUser, query: { page: number; limit: number; search?: string }) {
@@ -90,14 +105,52 @@ export async function createFleet(user: AuthUser, input: z.infer<typeof createFl
   return serialize(fleet.toObject());
 }
 
-export async function updateFleetStatus(user: AuthUser, id: string, status: string) {
-  if (user.role !== ROLES.PLATFORM_ADMIN) throw new AppError(403, "FORBIDDEN", "Only a platform admin can change fleet status.");
-  const parsed = statusSchema.safeParse(status);
-  if (!parsed.success) throw new AppError(400, "VALIDATION_ERROR", "Choose a valid status.");
+export const updateFleetSchema = z.object({
+  name: createFleetSchema.shape.name.optional(),
+  fleetCode: createFleetSchema.shape.fleetCode.optional(),
+  address: z.string().trim().max(300).optional(),
+  contactEmail: createFleetSchema.shape.contactEmail.optional(),
+  contactPhone: createFleetSchema.shape.contactPhone.optional(),
+  status: statusSchema.optional(),
+});
+
+async function fleetForPlatform(user: AuthUser, id: string) {
+  if (user.role !== ROLES.PLATFORM_ADMIN) throw new AppError(403, "FORBIDDEN", "Only a platform admin can manage fleets.");
+  if (!objectIdSchema.safeParse(id).success) throw new AppError(400, "INVALID_ID", "Fleet id is invalid.");
   const fleet = await FleetAccount.findById(id);
   if (!fleet) throw notFound("Fleet");
-  fleet.status = parsed.data;
-  await fleet.save();
+  return fleet;
+}
+
+export async function getFleet(user: AuthUser, id: string) {
+  const fleet = await fleetForPlatform(user, id);
+  return serialize(fleet.toObject());
+}
+
+export async function updateFleet(user: AuthUser, id: string, input: z.infer<typeof updateFleetSchema>) {
+  const fleet = await fleetForPlatform(user, id);
+  if (input.name) fleet.name = input.name;
+  if (input.fleetCode) fleet.fleetCode = input.fleetCode.toUpperCase();
+  if (input.address != null) fleet.address = input.address;
+  if (input.contactEmail) fleet.contactEmail = input.contactEmail.toLowerCase();
+  if (input.contactPhone) fleet.contactPhone = input.contactPhone;
+  if (input.status) fleet.status = input.status;
+  try {
+    await fleet.save();
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      const message = "Another fleet already uses this code.";
+      throw new AppError(409, "CODE_EXISTS", message, { fieldErrors: { fleetCode: [message] } });
+    }
+    throw error;
+  }
+  await writeAudit({
+    actorId: user.id,
+    action: "FLEET_UPDATED",
+    entityType: "FleetAccount",
+    entityId: String(fleet._id),
+    after: { name: fleet.name, fleetCode: fleet.fleetCode, status: fleet.status },
+  });
   return serialize(fleet.toObject());
 }
 
@@ -124,6 +177,7 @@ export async function listTrucks(user: AuthUser, query: { page: number; limit: n
     items: result.items.map((truck) => ({
       ...(serialize(truck) as object),
       imei: byTruck.get(String(truck._id))?.imei || "",
+      certification: byTruck.get(String(truck._id))?.certification || "STANDARD",
     })),
     meta: result.meta,
   };
@@ -133,12 +187,12 @@ export async function createTruck(user: AuthUser, input: z.infer<typeof createTr
   const tenant = requireFleetId(user, input.fleetId);
   const truck = await Truck.create({ fleetId: tenant, registrationNumber: input.registrationNumber.toUpperCase() });
   try {
-    await Tracker.create({ fleetId: tenant, truckId: truck._id, imei: input.imei });
+    await Tracker.create({ fleetId: tenant, truckId: truck._id, imei: input.imei, certification: input.certification });
   } catch (error) {
     await Truck.deleteOne({ _id: truck._id });
     throw error;
   }
-  return { ...(serialize(truck.toObject()) as object), imei: input.imei };
+  return { ...(serialize(truck.toObject()) as object), imei: input.imei, certification: input.certification };
 }
 
 export async function updateTruck(user: AuthUser, id: string, input: z.infer<typeof createTruckSchema>) {
@@ -150,11 +204,12 @@ export async function updateTruck(user: AuthUser, id: string, input: z.infer<typ
   const tracker = await Tracker.findOne({ truckId: truck._id, fleetId: tenant });
   if (tracker) {
     tracker.imei = input.imei;
+    tracker.certification = input.certification;
     await tracker.save();
   } else {
-    await Tracker.create({ fleetId: tenant, truckId: truck._id, imei: input.imei });
+    await Tracker.create({ fleetId: tenant, truckId: truck._id, imei: input.imei, certification: input.certification });
   }
-  return { ...(serialize(truck.toObject()) as object), imei: input.imei };
+  return { ...(serialize(truck.toObject()) as object), imei: input.imei, certification: input.certification };
 }
 
 export async function deleteTruck(user: AuthUser, id: string, fleetId?: string) {
@@ -200,6 +255,7 @@ export async function createFleetTrip(user: AuthUser, input: z.infer<typeof crea
     truckId: truck._id,
     origin: input.origin,
     destination: input.destination,
+    route: input.route,
   });
   return serialize(trip.toObject());
 }
@@ -214,6 +270,7 @@ export async function updateFleetTrip(user: AuthUser, id: string, input: z.infer
   trip.truckId = truck._id;
   trip.origin = input.origin;
   trip.destination = input.destination;
+  trip.route = input.route;
   await trip.save();
   return serialize(trip.toObject());
 }
@@ -225,6 +282,29 @@ export async function deleteFleetTrip(user: AuthUser, id: string, fleetId?: stri
   if (trip.status === "ACTIVE") throw new AppError(409, "IN_USE", "This trip is active. Finish it before deleting.");
   await trip.deleteOne();
   return { deleted: true };
+}
+
+export async function setFleetTripStatus(user: AuthUser, id: string, input: z.infer<typeof fleetTripStatusSchema>) {
+  const tenant = requireFleetId(user, input.fleetId);
+  const trip = await FleetTrip.findOne({ _id: id, fleetId: tenant });
+  if (!trip) throw notFound("Trip");
+  if (input.status === "ACTIVE") {
+    if (trip.status !== "PLANNED") throw new AppError(409, "IN_USE", "Only a planned trip can be started.");
+    const other = await FleetTrip.findOne({ fleetId: tenant, truckId: trip.truckId, status: "ACTIVE", _id: { $ne: trip._id } }).select("_id");
+    if (other) throw new AppError(409, "IN_USE", "This truck already has an active trip.");
+    trip.status = "ACTIVE";
+    trip.startedAt = new Date();
+  } else if (input.status === "COMPLETED") {
+    if (trip.status !== "ACTIVE") throw new AppError(409, "IN_USE", "Only an active trip can be completed.");
+    trip.status = "COMPLETED";
+    trip.endedAt = new Date();
+  } else {
+    if (trip.status === "COMPLETED") throw new AppError(409, "IN_USE", "A completed trip stays in the history.");
+    trip.status = "CANCELLED";
+    trip.endedAt = new Date();
+  }
+  await trip.save();
+  return serialize(trip.toObject());
 }
 
 export async function listGeofences(user: AuthUser, query: { page: number; limit: number; search?: string; fleetId?: string }) {
@@ -239,7 +319,15 @@ export async function listGeofences(user: AuthUser, query: { page: number; limit
 
 export async function createGeofence(user: AuthUser, input: z.infer<typeof createGeofenceSchema>) {
   const tenant = requireFleetId(user, input.fleetId);
-  const place = await FleetGeofence.create({ fleetId: tenant, name: input.name, kind: input.kind, address: input.address });
+  const place = await FleetGeofence.create({
+    fleetId: tenant,
+    name: input.name,
+    kind: input.kind,
+    address: input.address,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    radiusMeters: input.radiusMeters,
+  });
   return serialize(place.toObject());
 }
 
@@ -250,6 +338,9 @@ export async function updateGeofence(user: AuthUser, id: string, input: z.infer<
   place.name = input.name;
   place.kind = input.kind;
   place.address = input.address || "";
+  place.latitude = input.latitude;
+  place.longitude = input.longitude;
+  place.radiusMeters = input.radiusMeters;
   await place.save();
   return serialize(place.toObject());
 }
@@ -262,8 +353,8 @@ export async function deleteGeofence(user: AuthUser, id: string, fleetId?: strin
   return { deleted: true };
 }
 
-export async function fleetSummary(user: AuthUser) {
-  const tenant = requireFleetId(user);
+export async function fleetSummary(user: AuthUser, fleetId?: string) {
+  const tenant = requireFleetId(user, fleetId);
   const [trucks, activeTrips] = await Promise.all([
     Truck.countDocuments({ fleetId: tenant, status: "ACTIVE" }),
     FleetTrip.countDocuments({ fleetId: tenant, status: "ACTIVE" }),

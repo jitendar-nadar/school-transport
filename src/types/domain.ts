@@ -3,9 +3,12 @@ export const ROLES = {
   SCHOOL_ADMIN: "SCHOOL_ADMIN",
   DRIVER: "DRIVER",
   ATTENDANT: "ATTENDANT",
+  TOUR_COORDINATOR: "TOUR_COORDINATOR",
   PARENT: "PARENT",
   COMPANY_ADMIN: "COMPANY_ADMIN",
+  COMPANY_HR: "COMPANY_HR",
   FLEET_ADMIN: "FLEET_ADMIN",
+  AGENCY_ADMIN: "AGENCY_ADMIN",
   EMPLOYEE: "EMPLOYEE",
 } as const;
 
@@ -40,6 +43,20 @@ export const NOTIFICATION_TYPES = [
   "STUDENT_WRONG_STOP",
   "CHILD_STILL_ON_BUS",
   "BUS_TRACKING_OFFLINE",
+  "STUDENT_ENTERED_SCHOOL",
+  "STUDENT_EXITED_SCHOOL",
+  "STUDENT_ABSENT_FROM_SCHOOL",
+  "STUDENT_LEFT_EARLY",
+  "BUS_OVERSPEED",
+  "BUS_LONG_STOP",
+  "BUS_ROUTE_DEVIATION",
+  "TOUR_DEPARTED",
+  "TOUR_REACHED_DESTINATION",
+  "TOUR_RETURNING",
+  "TOUR_REACHED_SCHOOL",
+  "TOUR_STUDENT_MISSING",
+  "TOUR_STUDENT_FOUND",
+  "TOUR_STUDENT_WRONG_BUS",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -51,6 +68,7 @@ export type AuthUser = {
   schoolId: string | null;
   companyId: string | null;
   fleetId: string | null;
+  agencyId: string | null;
   employeeId: string | null;
   name: string;
   email: string;

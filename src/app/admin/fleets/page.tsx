@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { failureOf, passwordHint, passwordPattern, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -11,12 +12,14 @@ export default function FleetsPage() {
   const fleets = usePagedRecords<Fleet>("/api/v1/fleets", false);
   const { rows, error, reload, user } = fleets;
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setMessage("");
+    setFieldErrors({});
     try {
       await api("/api/v1/fleets", {
         method: "POST",
@@ -36,7 +39,9 @@ export default function FleetsPage() {
       setMessage("Fleet created.");
       await reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not create the fleet.");
+      const result = failureOf(caught, "Could not create the fleet.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -52,20 +57,20 @@ export default function FleetsPage() {
       {message ? <Notice tone={message.includes("created") ? "ok" : "error"}>{message}</Notice> : null}
       {user.role === "PLATFORM_ADMIN" ? (
         <Panel>
-          <form className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-            <Field label="Fleet name"><input className={controlClass} name="name" required /></Field>
-            <Field label="Fleet code"><input className={controlClass} name="fleetCode" required /></Field>
-            <Field label="Address"><input className={controlClass} name="address" /></Field>
+          <ValidatedForm className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+            <Field label="Fleet name"><input className={controlClass} name="name" minLength={2} required /></Field>
+            <Field label="Fleet code"><input className={controlClass} name="fleetCode" minLength={2} maxLength={20} required /></Field>
+            <Field label="Address"><input className={controlClass} name="address" maxLength={300} /></Field>
             <Field label="Contact email"><input className={controlClass} name="contactEmail" type="email" required /></Field>
-            <Field label="Contact phone"><input className={controlClass} name="contactPhone" required /></Field>
-            <Field label="Admin name"><input className={controlClass} name="adminName" required /></Field>
+            <Field label="Contact phone"><input className={controlClass} name="contactPhone" minLength={8} maxLength={20} required /></Field>
+            <Field label="Admin name"><input className={controlClass} name="adminName" minLength={2} required /></Field>
             <Field label="Admin email"><input className={controlClass} name="adminEmail" type="email" required /></Field>
-            <Field label="Admin password">
-              <input className={controlClass} name="adminPassword" type="password" required />
+            <Field label="Admin password" name="adminPassword">
+              <input className={controlClass} name="adminPassword" type="password" minLength={8} pattern={passwordPattern} title={passwordHint} required />
               <span className="mt-1 block text-xs font-normal text-slate-500">At least 8 characters, with a letter and a number.</span>
             </Field>
             <div className="md:col-span-3"><PrimaryButton>Create fleet</PrimaryButton></div>
-          </form>
+          </ValidatedForm>
         </Panel>
       ) : null}
       <Panel>

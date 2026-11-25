@@ -1,15 +1,18 @@
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/tokens";
 import { requireCompanyId } from "@/lib/auth/guard";
-import { AppError, notFound } from "@/lib/errors/app-error";
+import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
-import { passwordSchema } from "@/lib/validation/common";
+import { objectIdSchema, passwordSchema } from "@/lib/validation/common";
+import { BleTag } from "@/models/ble-tag";
+import { AttendanceDay } from "@/models/attendance";
 import { AttendanceGap, Company, Department, Employee } from "@/models/company";
+import { Gateway } from "@/models/platform-events";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
-import { describeGap, parseOfficeTime, policyFrom } from "@/modules/companies/attendance-rules";
+import { describeGap, gatewayHealth, parseOfficeTime, policyFrom } from "@/modules/companies/attendance-rules";
 import { escapeRegex, searchClause, serialize } from "@/utils/serialize";
 
 const statusSchema = z.enum(["TRIAL", "ACTIVE", "SUSPENDED"]);
@@ -93,14 +96,52 @@ export async function createCompany(user: AuthUser, input: z.infer<typeof create
   return serialize(company.toObject());
 }
 
-export async function updateCompanyStatus(user: AuthUser, id: string, status: string) {
-  if (user.role !== ROLES.PLATFORM_ADMIN) throw new AppError(403, "FORBIDDEN", "Only a platform admin can change company status.");
-  const parsed = statusSchema.safeParse(status);
-  if (!parsed.success) throw new AppError(400, "VALIDATION_ERROR", "Choose a valid status.");
+export const updateCompanySchema = z.object({
+  name: createCompanySchema.shape.name.optional(),
+  companyCode: createCompanySchema.shape.companyCode.optional(),
+  address: z.string().trim().max(300).optional(),
+  contactEmail: createCompanySchema.shape.contactEmail.optional(),
+  contactPhone: createCompanySchema.shape.contactPhone.optional(),
+  status: statusSchema.optional(),
+});
+
+async function companyForPlatform(user: AuthUser, id: string) {
+  if (user.role !== ROLES.PLATFORM_ADMIN) throw new AppError(403, "FORBIDDEN", "Only a platform admin can manage companies.");
+  if (!objectIdSchema.safeParse(id).success) throw new AppError(400, "INVALID_ID", "Company id is invalid.");
   const company = await Company.findById(id);
   if (!company) throw notFound("Company");
-  company.status = parsed.data;
-  await company.save();
+  return company;
+}
+
+export async function getCompany(user: AuthUser, id: string) {
+  const company = await companyForPlatform(user, id);
+  return serialize(company.toObject());
+}
+
+export async function updateCompany(user: AuthUser, id: string, input: z.infer<typeof updateCompanySchema>) {
+  const company = await companyForPlatform(user, id);
+  if (input.name) company.name = input.name;
+  if (input.companyCode) company.companyCode = input.companyCode.toUpperCase();
+  if (input.address != null) company.address = input.address;
+  if (input.contactEmail) company.contactEmail = input.contactEmail.toLowerCase();
+  if (input.contactPhone) company.contactPhone = input.contactPhone;
+  if (input.status) company.status = input.status;
+  try {
+    await company.save();
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      const message = "Another company already uses this code.";
+      throw new AppError(409, "CODE_EXISTS", message, { fieldErrors: { companyCode: [message] } });
+    }
+    throw error;
+  }
+  await writeAudit({
+    actorId: user.id,
+    action: "COMPANY_UPDATED",
+    entityType: "Company",
+    entityId: String(company._id),
+    after: { name: company.name, companyCode: company.companyCode, status: company.status },
+  });
   return serialize(company.toObject());
 }
 
@@ -166,6 +207,7 @@ export async function deleteEmployee(user: AuthUser, id: string, companyId?: str
   const employee = await Employee.findOne({ _id: id, companyId: tenant });
   if (!employee) throw notFound("Employee");
   if (employee.userId) await User.deleteOne({ _id: employee.userId });
+  await BleTag.updateMany({ employeeId: employee._id }, { $set: { employeeId: null, status: "UNASSIGNED", assignedAt: null } });
   await AttendanceGap.deleteMany({ companyId: tenant, employeeId: employee._id });
   await employee.deleteOne();
   return { deleted: true };
@@ -203,6 +245,9 @@ export async function createGap(user: AuthUser, input: z.infer<typeof createGapS
   }
   const company = await Company.findById(tenant).lean();
   if (!company) throw notFound("Company");
+  const policy = policyFrom(company);
+  const described = describeGap(policy, startedAt, endedAt);
+  const counted = policy.manualCountsAsPersonal ? described : { ...described, personalMinutes: 0, countsAsPersonal: false };
   const gap = await AttendanceGap.create({
     companyId: tenant,
     employeeId: employee._id,
@@ -210,7 +255,8 @@ export async function createGap(user: AuthUser, input: z.infer<typeof createGapS
     endedAt,
     reason: input.reason,
     source: "MANUAL",
-    ...describeGap(policyFrom(company), startedAt, endedAt),
+    ...counted,
+    kind: "MANUAL",
   });
   return serialize(gap.toObject());
 }
@@ -223,12 +269,21 @@ export async function deleteGap(user: AuthUser, id: string, companyId?: string) 
   return { deleted: true };
 }
 
-export async function companySummary(user: AuthUser) {
-  const tenant = requireCompanyId(user);
-  const [departments, employees, openGaps] = await Promise.all([
+export async function companySummary(user: AuthUser, companyId?: string) {
+  const tenant = requireCompanyId(user, companyId);
+  const [company, departments, employees, openGaps, gateways, pendingFieldDays] = await Promise.all([
+    Company.findById(tenant).lean(),
     Department.countDocuments({ companyId: tenant }),
     Employee.countDocuments({ companyId: tenant, status: "ACTIVE" }),
     AttendanceGap.countDocuments({ companyId: tenant, status: "OPEN" }),
+    Gateway.find({ ownerType: "COMPANY", ownerId: tenant, kind: "OFFICE", status: "ACTIVE" }, "lastContactAt").lean(),
+    AttendanceDay.countDocuments({ companyId: tenant, source: "PHONE", fieldReview: "PENDING" }),
   ]);
-  return { departments, employees, openGaps };
+  if (!company) throw notFound("Company");
+  const silentMinutes = policyFrom(company).gatewaySilentMinutes;
+  const now = new Date();
+  const silentGateways = gateways
+    .filter((gateway) => gatewayHealth(gateway.lastContactAt ? new Date(gateway.lastContactAt) : null, now, silentMinutes) !== "ONLINE")
+    .length;
+  return { departments, employees, openGaps, silentGateways, pendingFieldDays };
 }

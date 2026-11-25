@@ -3,7 +3,10 @@ import { registerModel } from "@/models/common";
 
 const schema = new Schema(
   {
-    schoolId: { type: Schema.Types.ObjectId, ref: "School", required: true, index: true },
+    schoolId: { type: Schema.Types.ObjectId, ref: "School", default: null, index: true },
+    agencyId: { type: Schema.Types.ObjectId, ref: "TransportAgency", default: null, index: true },
+    companyId: { type: Schema.Types.ObjectId, ref: "Company", default: null, index: true },
+    employeeId: { type: Schema.Types.ObjectId, ref: "Employee", default: null },
     tagIdentifier: { type: String, required: true, unique: true, trim: true },
     aliasIdentifiers: [{ type: String, trim: true }],
     studentId: { type: Schema.Types.ObjectId, ref: "Student", default: null },
@@ -17,6 +20,7 @@ const schema = new Schema(
 
 schema.index({ schoolId: 1, status: 1 });
 schema.index({ studentId: 1 });
+schema.index({ employeeId: 1 });
 schema.index({ aliasIdentifiers: 1 });
 
 export const BleTag = registerModel("BleTag", schema);

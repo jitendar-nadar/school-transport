@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useFieldError } from "@/components/admin/form-error-context";
 import { controlClass } from "@/components/admin/ui";
 
 type Option = { id: string; name: string; email?: string; detail?: string };
@@ -38,6 +39,8 @@ export function SearchSelect({
   const listId = useId();
   const notify = useRef(onChange);
   const mounted = useRef(false);
+  const error = useFieldError(name);
+  const errorId = useId();
   notify.current = onChange;
 
   useEffect(() => {
@@ -87,6 +90,8 @@ export function SearchSelect({
       <input
         className={controlClass}
         role="combobox"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -121,7 +126,7 @@ export function SearchSelect({
             <button
               key={person.id}
               type="button"
-              className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-900 transition hover:bg-teal-100"
+              className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-900 transition hover:bg-brand-100"
               onClick={() => removeOption(person.id)}
             >
               {person.name} ×
@@ -129,6 +134,7 @@ export function SearchSelect({
           ))}
         </div>
       ) : null}
+      {error ? <span className="mt-1 block text-sm leading-5 text-red-700" id={errorId}>{error}</span> : null}
       {selectedIds.map((id) => (
         <input key={id} type="hidden" name={name} value={id} />
       ))}
@@ -139,7 +145,7 @@ export function SearchSelect({
               <li key={person.id} role="option" aria-selected={index === activeIndex}>
                 <button
                   type="button"
-                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${index === activeIndex ? "bg-teal-50" : "hover:bg-slate-50"}`}
+                  className={`w-full px-3 py-2 text-left text-sm transition-colors ${index === activeIndex ? "bg-brand-50" : "hover:bg-slate-50"}`}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     addOption(person.id);

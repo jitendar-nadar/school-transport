@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { MotionProvider } from "@/components/admin/motion";
 import { AdminShell, type SessionUser } from "@/components/admin/shell";
 import { ACCESS_COOKIE } from "@/lib/auth/tokens";
 import { userFromAccessToken } from "@/lib/auth/guard";
@@ -22,9 +23,14 @@ export default async function Layout({ children }: { children: React.ReactNode }
     schoolId: user.schoolId,
     companyId: user.companyId,
     fleetId: user.fleetId,
+    agencyId: user.agencyId,
   };
-  if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "FLEET_ADMIN", "EMPLOYEE"].includes(session.role)) {
+  if (!["PLATFORM_ADMIN", "SCHOOL_ADMIN", "COMPANY_ADMIN", "COMPANY_HR", "FLEET_ADMIN", "AGENCY_ADMIN", "EMPLOYEE"].includes(session.role)) {
     redirect("/login?denied=1");
   }
-  return <AdminShell user={session}>{children}</AdminShell>;
+  return (
+    <MotionProvider>
+      <AdminShell user={session}>{children}</AdminShell>
+    </MotionProvider>
+  );
 }

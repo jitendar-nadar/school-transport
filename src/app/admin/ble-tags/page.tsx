@@ -1,9 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { BleBulkUpload } from "@/components/admin/ble-bulk-upload";
+import { EMPTY_FIELD_ERRORS } from "@/components/admin/form-error-context";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords, useRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
+import { TAG_MAX_LENGTH, TAG_MIN_LENGTH } from "@/modules/ble/ble-import";
 
 type StudentRef = { id?: string; name?: string; studentCode?: string; className?: string; division?: string };
 type Tag = {
@@ -12,7 +16,13 @@ type Tag = {
   status: string;
   batteryStatus: string;
   studentId?: StudentRef | string | null;
+  agencyId?: { id?: string; name?: string } | string | null;
 };
+
+function agencyName(tag: Tag) {
+  if (!tag.agencyId) return "";
+  return typeof tag.agencyId === "string" ? "Transport agency" : tag.agencyId.name || "Transport agency";
+}
 type Student = { id: string; name: string; studentCode?: string; className?: string; division?: string };
 
 function classAndDivision(student?: { className?: string; division?: string } | null) {
@@ -46,6 +56,9 @@ export default function BlePage() {
   const students = useRecords<Student>("/api/v1/students?limit=100");
   const [message, setMessage] = useState("");
   const [tone, setTone] = useState<"ok" | "error">("ok");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [errorOwner, setErrorOwner] = useState("");
+  const [mode, setMode] = useState<"single" | "bulk">("single");
 
   function report(text: string, nextTone: "ok" | "error" = "ok") {
     setMessage(text);
@@ -56,13 +69,19 @@ export default function BlePage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setErrorOwner("tag");
+    setFieldErrors({});
     try {
       await api("/api/v1/ble-tags", { method: "POST", body: { tagIdentifier: form.get("tagIdentifier"), tagType: "CARD" } });
       formElement.reset();
       report("Card registered.");
       await Promise.all([tags.reload(), assignable.reload()]);
     } catch (caught) {
-      report(caught instanceof Error ? caught.message : "Could not register the card.", "error");
+      const result = failureOf(caught, "Could not register the card.");
+      setErrorOwner("tag");
+      setFieldErrors(result.fields);
+      if (result.message) report(result.message, "error");
+      else setMessage("");
     }
   }
 
@@ -70,12 +89,18 @@ export default function BlePage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setErrorOwner("assign");
+    setFieldErrors({});
     try {
       await api(`/api/v1/ble-tags/${form.get("tagId")}/assign`, { method: "POST", body: { studentId: form.get("studentId") } });
       report("Card assigned.");
       await Promise.all([tags.reload(), assignable.reload()]);
     } catch (caught) {
-      report(caught instanceof Error ? caught.message : "Could not assign the card.", "error");
+      const result = failureOf(caught, "Could not assign the card.");
+      setErrorOwner("assign");
+      setFieldErrors(result.fields);
+      if (result.message) report(result.message, "error");
+      else setMessage("");
     }
   }
 
@@ -125,18 +150,43 @@ export default function BlePage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="BLE cards" subtitle="Change the student on a card from the list. If a card is lost, mark it inactive, then assign a new card to that student." />
+      <PageHeader title="BLE cards" subtitle="Change the student on a card from the list. If a card is lost, mark it inactive, then assign a new card to that student. Cards a transport agency hands to the school appear here to map." />
       {tags.error ? <Notice>{tags.error}</Notice> : null}
       {message ? <Notice tone={tone}>{message}</Notice> : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel>
-          <form className="grid gap-3" onSubmit={createTag}>
-            <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" required /></Field>
-            <PrimaryButton>Register card</PrimaryButton>
-          </form>
+          <div className="mb-4 inline-flex rounded-lg bg-slate-100 p-1" role="group" aria-label="How to register cards">
+            {([["single", "Single card"], ["bulk", "Bulk upload (CSV)"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${mode === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => {
+                  setMode(value);
+                  setFieldErrors({});
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === "single" ? (
+            <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "tag" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={createTag}>
+              <Field label="Tag identifier"><input className={controlClass} name="tagIdentifier" minLength={TAG_MIN_LENGTH} maxLength={TAG_MAX_LENGTH} required /></Field>
+              <PrimaryButton>Register card</PrimaryButton>
+            </ValidatedForm>
+          ) : (
+            <BleBulkUpload
+              onImported={async (summary) => {
+                report(summary);
+                await Promise.all([tags.reload(), assignable.reload(), students.reload()]);
+              }}
+            />
+          )}
         </Panel>
         <Panel>
-          <form className="grid gap-3" onSubmit={assign}>
+          <ValidatedForm className="grid gap-3" serverErrors={errorOwner === "assign" ? fieldErrors : EMPTY_FIELD_ERRORS} onInvalid={() => report("", "error")} onSubmit={assign}>
             <Field label="Card">
               <select className={controlClass} name="tagId" required>
                 <option value="">Choose</option>
@@ -150,13 +200,13 @@ export default function BlePage() {
               </select>
             </Field>
             <PrimaryButton>Assign</PrimaryButton>
-          </form>
+          </ValidatedForm>
         </Panel>
       </div>
       <Panel>
         <DataTable
           {...listControls(tags)}
-          columns={["Identifier", "Student", "Class", "Division", "Battery", "Status", ""]}
+          columns={["Identifier", "Student", "Class", "Division", "Battery", "Status", "Supplied by", ""]}
           rows={tags.rows.map((tag) => [
             tag.tagIdentifier,
             <select
@@ -183,7 +233,8 @@ export default function BlePage() {
                 <option key={status} value={status}>{status === "ACTIVE" ? "Active" : status === "UNASSIGNED" ? "Unassigned" : status === "INACTIVE" ? "Inactive" : status}</option>
               ))}
             </select>,
-            <RowActions key={`${tag.id}-delete`} onDelete={() => { void removeTag(tag); }} />,
+            agencyName(tag) || "School",
+            tag.agencyId ? "" : <RowActions key={`${tag.id}-delete`} onDelete={() => { void removeTag(tag); }} />,
           ])}
         />
       </Panel>

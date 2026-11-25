@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requireSchoolId, tenantFilter } from "@/lib/auth/guard";
 import { paginate } from "@/lib/mongodb/paginate";
-import { AppError, notFound } from "@/lib/errors/app-error";
+import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { School } from "@/models/school";
 import { writeAudit } from "@/modules/audit/audit.service";
 import type { AuthUser } from "@/types/domain";
@@ -137,7 +137,15 @@ export async function updateSchool(user: AuthUser, id: string, input: z.infer<ty
       expiresAt: input.subscription.expiresAt ? new Date(input.subscription.expiresAt) : existing.subscription?.expiresAt,
     };
   }
-  await existing.save();
+  try {
+    await existing.save();
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      const message = "Another school already uses this code.";
+      throw new AppError(409, "CODE_EXISTS", message, { fieldErrors: { schoolCode: [message] } });
+    }
+    throw error;
+  }
   await writeAudit({
     schoolId: String(existing._id),
     actorId: user.id,

@@ -1,4 +1,8 @@
+import { distanceMeters, type LatLng } from "@/utils/geo";
+
 export const OFFICE_ZONE = "Asia/Kolkata";
+
+export type FieldSite = { name: string; latitude: number; longitude: number; radiusMeters: number };
 
 export type AttendancePolicy = {
   gracePeriodMinutes: number;
@@ -6,11 +10,56 @@ export type AttendancePolicy = {
   shiftEnd: string;
   lunchStart: string;
   lunchEnd: string;
+  silenceCountsAsPersonal: boolean;
   lunchCountsAsPersonal: boolean;
+  manualCountsAsPersonal: boolean;
+  pilotOneFloor: boolean;
   reviewWindowHours: number;
   fieldCheckInAllowed: boolean;
+  fieldApprovalRequired: boolean;
+  fieldSites: FieldSite[];
+  gatewaySilentMinutes: number;
   monitoringPolicy: string;
 };
+
+export type Span = { startedAt: Date; endedAt: Date };
+
+export function splitGapAt(gap: Span, at: Date, graceMinutes: number): Span[] {
+  if (at.getTime() <= gap.startedAt.getTime() || at.getTime() >= gap.endedAt.getTime()) return [gap];
+  return [
+    { startedAt: gap.startedAt, endedAt: at },
+    { startedAt: at, endedAt: gap.endedAt },
+  ].filter((piece) => exceedsGrace(piece.startedAt, piece.endedAt, graceMinutes));
+}
+
+export type GatewayHealth = "ONLINE" | "SILENT" | "NEVER";
+
+export function gatewayHealth(lastContactAt: Date | null | undefined, now: Date, silentMinutes: number): GatewayHealth {
+  if (!lastContactAt) return "NEVER";
+  return now.getTime() - lastContactAt.getTime() > silentMinutes * 60 * 1000 ? "SILENT" : "ONLINE";
+}
+
+export function belowSignal(rssi: number | null | undefined, minRssi: number | null | undefined) {
+  return rssi != null && minRssi != null && rssi < minRssi;
+}
+
+export type FieldReview = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED";
+
+export function dayCounts(day: { source?: string | null; fieldReview?: string | null }) {
+  if (day.source !== "PHONE") return "WORKING" as const;
+  if (day.fieldReview === "REJECTED") return "EXCLUDED" as const;
+  if (day.fieldReview === "PENDING") return "PENDING" as const;
+  return "WORKING" as const;
+}
+
+export function matchSite(sites: FieldSite[], at: LatLng) {
+  let best: { site: FieldSite; distance: number } | null = null;
+  for (const site of sites) {
+    const distance = distanceMeters({ latitude: site.latitude, longitude: site.longitude }, at);
+    if (distance <= site.radiusMeters && (!best || distance < best.distance)) best = { site, distance };
+  }
+  return best;
+}
 
 export type GapStatus = "OPEN" | "DISPUTED" | "APPROVED" | "REJECTED";
 
@@ -86,15 +135,21 @@ function lunchOverlapMinutes(startedAt: Date, endedAt: Date, lunchStart: string,
   return minutes;
 }
 
-export function personalMinutes(startedAt: Date, endedAt: Date, policy: Pick<AttendancePolicy, "lunchStart" | "lunchEnd" | "lunchCountsAsPersonal">) {
+export function personalMinutes(startedAt: Date, endedAt: Date, policy: Pick<AttendancePolicy, "lunchStart" | "lunchEnd" | "lunchCountsAsPersonal" | "silenceCountsAsPersonal">) {
   const total = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
-  if (policy.lunchCountsAsPersonal) return total;
-  return Math.max(0, total - lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd));
+  const lunch = lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd);
+  const silence = Math.max(0, total - lunch);
+  const silenceMinutes = policy.silenceCountsAsPersonal === false ? 0 : silence;
+  const lunchMinutes = policy.lunchCountsAsPersonal ? lunch : 0;
+  return silenceMinutes + lunchMinutes;
 }
 
 export function describeGap(policy: AttendancePolicy, startedAt: Date, endedAt: Date) {
+  const total = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000));
+  const lunch = lunchOverlapMinutes(startedAt, endedAt, policy.lunchStart, policy.lunchEnd);
   const minutes = personalMinutes(startedAt, endedAt, policy);
   return {
+    kind: lunch > 0 && lunch === total ? "LUNCH" as const : "SILENCE" as const,
     countsAsPersonal: minutes > 0,
     personalMinutes: minutes,
     reviewDeadline: new Date(endedAt.getTime() + policy.reviewWindowHours * 60 * 60 * 1000),
@@ -164,9 +219,20 @@ export function policyFrom(company: Partial<AttendancePolicy> | null | undefined
     shiftEnd: company?.shiftEnd || "18:30",
     lunchStart: company?.lunchStart || "13:00",
     lunchEnd: company?.lunchEnd || "14:00",
+    silenceCountsAsPersonal: company?.silenceCountsAsPersonal !== false,
     lunchCountsAsPersonal: Boolean(company?.lunchCountsAsPersonal),
+    manualCountsAsPersonal: company?.manualCountsAsPersonal !== false,
+    pilotOneFloor: Boolean(company?.pilotOneFloor),
     reviewWindowHours: company?.reviewWindowHours || 48,
     fieldCheckInAllowed: Boolean(company?.fieldCheckInAllowed),
+    fieldApprovalRequired: Boolean(company?.fieldApprovalRequired),
+    fieldSites: (company?.fieldSites || []).map((site) => ({
+      name: site.name,
+      latitude: Number(site.latitude),
+      longitude: Number(site.longitude),
+      radiusMeters: Number(site.radiusMeters),
+    })),
+    gatewaySilentMinutes: company?.gatewaySilentMinutes || 30,
     monitoringPolicy: company?.monitoringPolicy || "",
   };
 }

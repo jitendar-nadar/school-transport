@@ -13,7 +13,7 @@ import { objectIdSchema, passwordSchema } from "@/lib/validation/common";
 import { serialize } from "@/utils/serialize";
 import { escapeRegex } from "@/utils/serialize";
 
-const roleSchema = z.enum(["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT"]);
+const roleSchema = z.enum(["PLATFORM_ADMIN", "SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "TOUR_COORDINATOR", "PARENT"]);
 
 export const createUserSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -44,7 +44,7 @@ function assertRoleAssignment(actor: AuthUser, role: Role, schoolId?: string) {
   if (!schoolId) {
     throw new AppError(400, "SCHOOL_REQUIRED", "School staff, drivers, and parents must belong to a school.");
   }
-  if (actor.role !== ROLES.PLATFORM_ADMIN && !["SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "PARENT"].includes(role)) {
+  if (actor.role !== ROLES.PLATFORM_ADMIN && !["SCHOOL_ADMIN", "DRIVER", "ATTENDANT", "TOUR_COORDINATOR", "PARENT"].includes(role)) {
     throw new AppError(403, "FORBIDDEN", "You cannot assign that role.");
   }
 }

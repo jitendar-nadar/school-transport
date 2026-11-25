@@ -14,10 +14,18 @@ const schema = new Schema(
     closedBy: { type: String, enum: ["LAST_SEEN", "PHONE", "SHIFT_END"], default: null },
     fieldLatitude: { type: Number, default: null },
     fieldLongitude: { type: Number, default: null },
+    fieldInLatitude: { type: Number, default: null },
+    fieldInLongitude: { type: Number, default: null },
+    fieldSite: { type: String, default: "" },
+    fieldReview: { type: String, enum: ["NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED"], default: "NOT_REQUIRED" },
+    fieldReviewNote: { type: String, default: "" },
+    fieldReviewedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    fieldReviewedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: "attendancedays" },
 );
 
 schema.index({ companyId: 1, employeeId: 1, workDate: 1 }, { unique: true });
+schema.index({ companyId: 1, fieldReview: 1 });
 
 export const AttendanceDay = registerModel("AttendanceDay", schema);

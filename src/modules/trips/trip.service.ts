@@ -19,6 +19,7 @@ import { Assignment, Route, Stop, Vehicle } from "@/models/fleet";
 import { School } from "@/models/school";
 import { Student } from "@/models/student";
 import { BleDetection, Trip, TripEvent, TripStudent } from "@/models/trip";
+import { User } from "@/models/user";
 import type { AuthUser } from "@/types/domain";
 import { ROLES } from "@/types/domain";
 import { objectIdSchema } from "@/lib/validation/common";
@@ -325,6 +326,47 @@ export async function addDetections(user: AuthUser, tripId: string, input: z.inf
       row.lastDetectedAt = detectedAt;
       row.lastRssi = detection.rssi;
       await row.save();
+      const autoBoard = school.settings?.busAutoBoardOnDetect !== false;
+      if (autoBoard && row.boardingStatus !== "BOARDED") {
+        let distanceToStop: number | null = null;
+        let stopRadius: number | null = null;
+        const busPoint = fromPoint(trip.lastKnownLocation);
+        const detectPoint =
+          detection.latitude != null && detection.longitude != null
+            ? { latitude: detection.latitude, longitude: detection.longitude }
+            : busPoint;
+        if (row.assignedStopId && detectPoint) {
+          const stop = await Stop.findById(row.assignedStopId).lean();
+          const stopPoint = fromPoint(stop?.location);
+          if (stopPoint) {
+            distanceToStop = distanceMeters(detectPoint, stopPoint);
+            stopRadius = Number(stop?.geofenceRadiusMeters || 80);
+          }
+        }
+        if (
+          assistedBoardingAllowed({
+            lastDetectedAt: detectedAt,
+            occurredAt: detectedAt,
+            rssi: detection.rssi,
+            distanceToStopMeters: distanceToStop,
+            stopRadiusMeters: stopRadius,
+          })
+        ) {
+          try {
+            await confirmBoarding(user, tripId, {
+              studentId: String(student!._id),
+              verificationMethod: "ASSISTED",
+              occurredAt: detection.detectedAt,
+              latitude: detectPoint?.latitude,
+              longitude: detectPoint?.longitude,
+              eventId: `auto-board-${detection.eventId}`,
+            });
+            processingStatus = "BOARDED";
+          } catch {
+            // Keep DETECTED when assisted checks fail; attendant can confirm manually.
+          }
+        }
+      }
     } else if (student) {
       processingStatus = "WRONG_BUS";
       const timeZone = school.settings?.notificationTimezone || "Asia/Kolkata";
@@ -375,15 +417,23 @@ export async function addDetections(user: AuthUser, tripId: string, input: z.inf
       throw error;
     }
 
+    const refreshed = row && student ? await TripStudent.findOne({ tripId: trip._id, studentId: student._id }).lean() : row;
     results.push({
       eventId: detection.eventId,
-      status: processingStatus === "MATCHED" ? "matched" : processingStatus === "WRONG_BUS" ? "wrong_bus" : "unresolved",
+      status:
+        processingStatus === "BOARDED"
+          ? "boarded"
+          : processingStatus === "MATCHED"
+            ? "matched"
+            : processingStatus === "WRONG_BUS"
+              ? "wrong_bus"
+              : "unresolved",
       student: student
         ? {
             id: String(student._id),
             name: student.name,
             photoUrl: student.photoUrl || "",
-            boardingStatus: row?.boardingStatus || "NOT_ON_ROSTER",
+            boardingStatus: refreshed?.boardingStatus || "NOT_ON_ROSTER",
           }
         : null,
     });
@@ -642,6 +692,16 @@ export async function syncTrip(user: AuthUser, tripId: string, input: z.infer<ty
   return { results };
 }
 
+async function tripStaffRecipientIds(trip: { schoolId: unknown; driverId?: unknown; attendantId?: unknown }) {
+  const staff = await User.find({ schoolId: trip.schoolId, role: ROLES.SCHOOL_ADMIN, status: "ACTIVE" }).select("_id").lean();
+  const ids = [
+    ...staff.map((row: { _id: unknown }) => String(row._id)),
+    trip.driverId ? String(trip.driverId) : "",
+    trip.attendantId ? String(trip.attendantId) : "",
+  ];
+  return [...new Set(ids.filter(Boolean))];
+}
+
 export async function endTrip(user: AuthUser, tripId: string, input: z.infer<typeof endTripSchema>) {
   const trip = await loadCrewTrip(user, tripId);
   const rows = await TripStudent.find({ tripId: trip._id }).lean();
@@ -660,6 +720,7 @@ export async function endTrip(user: AuthUser, tripId: string, input: z.infer<typ
   const endedAt = new Date();
   if (unresolved.length && input.unresolvedOverride) {
     const students = await Student.find({ _id: { $in: unresolved.map((row: { studentId: unknown }) => row.studentId) } }).lean();
+    const staffIds = await tripStaffRecipientIds(trip);
     for (const student of students) {
       const body = `${student.name} is still marked onboard after the trip ended. Staff recorded: ${input.unresolvedOverride.reason}`;
       await notifyUsers({
@@ -672,6 +733,18 @@ export async function endTrip(user: AuthUser, tripId: string, input: z.infer<typ
         body,
         occurredAt: endedAt,
         dedupParts: ["CHILD_STILL_ON_BUS", String(trip._id), String(student._id)],
+      });
+      await notifyUsers({
+        schoolId: String(trip.schoolId),
+        recipientIds: staffIds,
+        studentId: String(student._id),
+        tripId: String(trip._id),
+        type: "CHILD_STILL_ON_BUS",
+        title: "Child still marked onboard",
+        body,
+        occurredAt: endedAt,
+        dedupParts: ["CHILD_STILL_ON_BUS", "STAFF", String(trip._id), String(student._id)],
+        asParent: false,
       });
     }
     trip.safetyOverrideReason = input.unresolvedOverride.reason;

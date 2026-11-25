@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { LocationPicker, defaultMapPoint, type MapPoint } from "@/components/admin/location-picker";
+import { failureOf, ValidatedForm } from "@/components/admin/validated-form";
 import { DataTable, Field, Notice, PageHeader, Panel, PrimaryButton, RowActions, controlClass } from "@/components/admin/ui";
 import { listControls, usePagedRecords } from "@/components/admin/use-records";
 import { api } from "@/lib/admin/api";
@@ -11,6 +12,7 @@ type Stop = { id: string; name: string; stopType: string; address: string; latit
 export default function StopsPage() {
   const stops = usePagedRecords<Stop>("/api/v1/stops");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [point, setPoint] = useState<MapPoint>(defaultMapPoint);
   const [confirmed, setConfirmed] = useState(false);
   const [editing, setEditing] = useState<Stop | null>(null);
@@ -24,12 +26,14 @@ export default function StopsPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setMessage("");
     if (!confirmed) {
-      setMessage("Confirm the pin on the map before saving.");
+      setFieldErrors({ location: "Confirm the pin on the map before saving." });
       return;
     }
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    setFieldErrors({});
     try {
       await api(editing ? `/api/v1/stops/${editing.id}` : "/api/v1/stops", {
         method: editing ? "PATCH" : "POST",
@@ -51,7 +55,9 @@ export default function StopsPage() {
       setMessage("Stop saved.");
       await stops.reload();
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Could not save the stop.");
+      const result = failureOf(caught, "Could not save the stop.");
+      setFieldErrors(result.fields);
+      setMessage(result.message);
     }
   }
 
@@ -62,6 +68,7 @@ export default function StopsPage() {
     setPoint({ latitude: stop.latitude ?? defaultMapPoint.latitude, longitude: stop.longitude ?? defaultMapPoint.longitude });
     setConfirmed(stop.latitude != null && stop.longitude != null);
     setMessage("");
+    setFieldErrors({});
   }
 
   function cancelEdit() {
@@ -90,8 +97,8 @@ export default function StopsPage() {
       {stops.error ? <Notice>{stops.error}</Notice> : null}
       {message ? <Notice tone={message.includes("saved") || message.includes("deleted") ? "ok" : "error"}>{message}</Notice> : null}
       <Panel>
-        <form key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" onSubmit={onSubmit}>
-          <Field label="Name"><input className={controlClass} name="name" defaultValue={editing?.name || ""} required /></Field>
+        <ValidatedForm key={editing?.id || "new"} className="grid gap-3 md:grid-cols-3" serverErrors={fieldErrors} onInvalid={() => setMessage("")} onSubmit={onSubmit}>
+          <Field label="Name"><input className={controlClass} name="name" minLength={2} defaultValue={editing?.name || ""} required /></Field>
           <Field label="Address">
             <input
               className={controlClass}
@@ -122,10 +129,10 @@ export default function StopsPage() {
             onPointChange={movePin}
           />
           <div className="flex items-end gap-3">
-            <PrimaryButton disabled={!confirmed}>{editing ? "Save changes" : "Add stop"}</PrimaryButton>
+            <PrimaryButton>{editing ? "Save changes" : "Add stop"}</PrimaryButton>
             {editing ? <button className="text-sm text-slate-600 hover:underline" type="button" onClick={cancelEdit}>Cancel</button> : null}
           </div>
-        </form>
+        </ValidatedForm>
       </Panel>
       <Panel>
         <DataTable

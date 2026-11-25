@@ -88,6 +88,7 @@ function toAuthUser(user: {
   schoolId?: unknown;
   companyId?: unknown;
   fleetId?: unknown;
+  agencyId?: unknown;
   employeeId?: unknown;
   name: string;
   email: string;
@@ -100,6 +101,7 @@ function toAuthUser(user: {
     schoolId: user.schoolId ? String(user.schoolId) : null,
     companyId: user.companyId ? String(user.companyId) : null,
     fleetId: user.fleetId ? String(user.fleetId) : null,
+    agencyId: user.agencyId ? String(user.agencyId) : null,
     employeeId: user.employeeId ? String(user.employeeId) : null,
     name: user.name,
     email: user.email,
@@ -114,7 +116,7 @@ export function requireCompanyId(user: AuthUser, requested?: string | null) {
     if (!requested) throw new AppError(400, "COMPANY_REQUIRED", "Choose a company before continuing.");
     return requested;
   }
-  if ((user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.EMPLOYEE) || !user.companyId) {
+  if (user.role !== ROLES.COMPANY_ADMIN && user.role !== ROLES.COMPANY_HR && user.role !== ROLES.EMPLOYEE || !user.companyId) {
     throw new AppError(403, "FORBIDDEN", "This account cannot access company records.");
   }
   if (requested && requested !== user.companyId) {
@@ -135,4 +137,18 @@ export function requireFleetId(user: AuthUser, requested?: string | null) {
     throw new AppError(403, "TENANT_MISMATCH", "You cannot access another fleet's data.");
   }
   return user.fleetId;
+}
+
+export function requireAgencyId(user: AuthUser, requested?: string | null) {
+  if (user.role === ROLES.PLATFORM_ADMIN) {
+    if (!requested) throw new AppError(400, "AGENCY_REQUIRED", "Choose a transport agency before continuing.");
+    return requested;
+  }
+  if (user.role !== ROLES.AGENCY_ADMIN || !user.agencyId) {
+    throw new AppError(403, "FORBIDDEN", "This account cannot access transport agency records.");
+  }
+  if (requested && requested !== user.agencyId) {
+    throw new AppError(403, "TENANT_MISMATCH", "You cannot access another agency's data.");
+  }
+  return user.agencyId;
 }

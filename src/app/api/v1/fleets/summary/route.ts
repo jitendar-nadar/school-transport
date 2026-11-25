@@ -1,9 +1,13 @@
-import { apiHandler } from "@/lib/api/handler";
+import { apiHandler, readQuery } from "@/lib/api/handler";
 import { ok } from "@/lib/api/http";
+import { listQuerySchema } from "@/lib/validation/common";
 import { fleetSummary } from "@/modules/transport/transport.service";
 import { ROLES } from "@/types/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const GET = apiHandler(async ({ user }) => ok(await fleetSummary(user)), { roles: [ROLES.FLEET_ADMIN] });
+export const GET = apiHandler(async ({ req, user }) => {
+  const query = readQuery(req, listQuerySchema);
+  return ok(await fleetSummary(user, query.fleetId));
+}, { roles: [ROLES.PLATFORM_ADMIN, ROLES.FLEET_ADMIN] });

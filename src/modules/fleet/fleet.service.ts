@@ -1,19 +1,32 @@
 import { Types, type PipelineStage } from "mongoose";
 import { z } from "zod";
 import { requireSchoolId } from "@/lib/auth/guard";
-import { AppError, notFound } from "@/lib/errors/app-error";
+import { AppError, isDuplicateKey, notFound } from "@/lib/errors/app-error";
 import { paginate } from "@/lib/mongodb/paginate";
 import { Assignment, Route, Stop, Vehicle } from "@/models/fleet";
 import { Student } from "@/models/student";
 import { Trip } from "@/models/trip";
 import { User } from "@/models/user";
 import { writeAudit } from "@/modules/audit/audit.service";
+import { seatsBySchool, seatsUsed } from "@/modules/agencies/agency-seats";
 import type { AuthUser } from "@/types/domain";
 import { objectIdSchema } from "@/lib/validation/common";
 import { escapeRegex, serialize } from "@/utils/serialize";
 import { fromPoint, toPoint } from "@/utils/geo";
 
 const optionalIds = z.array(objectIdSchema).optional().default([]);
+
+const imeiField = z
+  .string()
+  .trim()
+  .max(20)
+  .optional()
+  .transform((value) => {
+    if (!value) return null;
+    const cleaned = value.replace(/\s+/g, "").toUpperCase();
+    return cleaned || null;
+  })
+  .refine((value) => value == null || /^\d{8,20}$/.test(value), "IMEI must be 8 to 20 digits.");
 
 export const vehicleSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -24,6 +37,7 @@ export const vehicleSchema = z.object({
   attendantIds: optionalIds,
   studentIds: optionalIds,
   status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
+  imei: imeiField,
 });
 export const updateVehicleSchema = z.object({
   schoolId: objectIdSchema.optional(),
@@ -34,6 +48,7 @@ export const updateVehicleSchema = z.object({
   attendantIds: z.array(objectIdSchema).optional(),
   studentIds: z.array(objectIdSchema).optional(),
   status: z.enum(["ACTIVE", "MAINTENANCE", "INACTIVE"]).optional(),
+  imei: imeiField,
 });
 
 export const stopSchema = z.object({
@@ -81,9 +96,20 @@ async function assertCrew(schoolId: string, ids: string[], role: "DRIVER" | "ATT
   }
 }
 
-async function assertStudents(schoolId: string, ids: string[], capacity: number, vehicleId?: string) {
+async function seatsElsewhere(vehicle: { schoolId?: unknown; agencyVehicleId?: unknown }) {
+  if (!vehicle.agencyVehicleId) return 0;
+  const agencyVehicleId = String(vehicle.agencyVehicleId);
+  return seatsUsed(await seatsBySchool([agencyVehicleId]), agencyVehicleId, undefined, String(vehicle.schoolId));
+}
+
+async function assertStudents(schoolId: string, ids: string[], capacity: number, vehicleId?: string, shared?: { elsewhere: number; current: number }) {
   if (ids.length > capacity) {
     throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
+  }
+  if (shared?.elsewhere && ids.length + shared.elsewhere > capacity && ids.length > shared.current) {
+    const left = Math.max(0, capacity - shared.elsewhere);
+    const message = `This vehicle is shared with other schools, which have mapped ${shared.elsewhere} of its ${capacity} seats. Choose no more than ${left} student${left === 1 ? "" : "s"}.`;
+    throw new AppError(422, "OVER_CAPACITY", message, { fieldErrors: { studentIds: [message] } });
   }
   if (new Set(ids).size !== ids.length) {
     throw new AppError(422, "DUPLICATE_STUDENT", "Each student can be mapped only once.");
@@ -130,9 +156,15 @@ export async function listVehicles(user: AuthUser, query: { page: number; limit:
       { path: "driverIds", select: "name phone" },
       { path: "attendantIds", select: "name phone" },
       { path: "studentIds", select: "name studentCode className division" },
+      { path: "agencyId", select: "name contactPhone" },
     ],
   });
-  return { items: result.items.map((item) => serialize(item)), meta: result.meta };
+  const items = result.items.map((item) => serialize(item) as Record<string, unknown> & { agencyVehicleId?: unknown });
+  const seats = await seatsBySchool(items.flatMap((item) => (item.agencyVehicleId ? [String(item.agencyVehicleId)] : [])));
+  return {
+    items: items.map((item) => ({ ...item, seatsTakenElsewhere: item.agencyVehicleId ? seatsUsed(seats, String(item.agencyVehicleId), undefined, schoolId) : 0 })),
+    meta: result.meta,
+  };
 }
 
 export async function listMappedStudents(user: AuthUser, query: { page: number; limit: number; search?: string; schoolId?: string }) {
@@ -199,18 +231,37 @@ export async function createVehicle(user: AuthUser, input: z.infer<typeof vehicl
   const schoolId = requireSchoolId(user, input.schoolId);
   await assertCrew(schoolId, input.driverIds, "DRIVER");
   await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
-  const vehicle = await Vehicle.create({ ...input, schoolId, studentIds: [], status: input.status ?? "ACTIVE" });
-  return serialize(vehicle.toObject());
+  try {
+    const vehicle = await Vehicle.create({ ...input, schoolId, studentIds: [], status: input.status ?? "ACTIVE", imei: input.imei ?? null });
+    return serialize(vehicle.toObject());
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      throw new AppError(409, "IMEI_TAKEN", "That tracker IMEI is already paired to a vehicle.", {
+        fieldErrors: { imei: ["That tracker IMEI is already paired to a vehicle."] },
+      });
+    }
+    throw error;
+  }
 }
 
 export async function updateVehicle(user: AuthUser, id: string, input: z.infer<typeof updateVehicleSchema>) {
   const schoolId = requireSchoolId(user, input.schoolId);
   const vehicle = await Vehicle.findOne({ _id: id, schoolId });
   if (!vehicle) throw notFound("Vehicle");
+  if (vehicle.agencyId) {
+    const changed = (["vehicleNumber", "vehicleType", "capacity", "status"] as const).filter((key) => input[key] !== undefined && String(input[key]) !== String(vehicle[key]));
+    if (changed.length) {
+      const message = "This vehicle is supplied by a transport agency. Only the agency changes its number, type, capacity, or status.";
+      throw new AppError(422, "AGENCY_VEHICLE", message, { fieldErrors: Object.fromEntries(changed.map((key) => [key, [message]])) });
+    }
+  }
   if (input.driverIds) await assertCrew(schoolId, input.driverIds, "DRIVER");
   if (input.attendantIds) await assertCrew(schoolId, input.attendantIds, "ATTENDANT");
   const capacity = input.capacity ?? vehicle.capacity;
-  if (input.studentIds) await assertStudents(schoolId, input.studentIds, capacity, id);
+  if (input.studentIds) {
+    const shared = { elsewhere: await seatsElsewhere(vehicle), current: vehicle.studentIds?.length || 0 };
+    await assertStudents(schoolId, input.studentIds, capacity, id, shared);
+  }
   else if (input.capacity && (vehicle.studentIds?.length || 0) > input.capacity) {
     throw new AppError(422, "OVER_CAPACITY", "Choose no more students than this vehicle can carry.");
   }
@@ -222,8 +273,18 @@ export async function updateVehicle(user: AuthUser, id: string, input: z.infer<t
     attendantIds: input.attendantIds ?? vehicle.attendantIds,
     studentIds: input.studentIds ?? vehicle.studentIds,
     status: input.status ?? vehicle.status,
+    imei: input.imei !== undefined ? input.imei : vehicle.imei,
   });
-  await vehicle.save();
+  try {
+    await vehicle.save();
+  } catch (error) {
+    if (isDuplicateKey(error)) {
+      throw new AppError(409, "IMEI_TAKEN", "That tracker IMEI is already paired to a vehicle.", {
+        fieldErrors: { imei: ["That tracker IMEI is already paired to a vehicle."] },
+      });
+    }
+    throw error;
+  }
   return serialize(vehicle.toObject());
 }
 
@@ -231,6 +292,9 @@ export async function deleteVehicle(user: AuthUser, id: string, schoolId?: strin
   const tenant = requireSchoolId(user, schoolId);
   const vehicle = await Vehicle.findOne({ _id: id, schoolId: tenant });
   if (!vehicle) throw notFound("Vehicle");
+  if (vehicle.agencyId && vehicle.status !== "INACTIVE") {
+    throw new AppError(409, "AGENCY_VEHICLE", "This vehicle is supplied by a transport agency. The agency removes it when it stops serving this school.");
+  }
   const active = await Trip.findOne({ vehicleId: vehicle._id, status: "ACTIVE" }).select("_id");
   if (active) throw new AppError(409, "IN_USE", "This vehicle has an active trip. End that trip before deleting it.");
   const route = await Route.findOne({ vehicleId: vehicle._id }).select("name");
@@ -373,19 +437,23 @@ async function assertAssignmentLinks(schoolId: string, input: {
     const student = await Student.findOne({ _id: input.studentId, schoolId });
     if (!student) throw notFound("Student");
   }
-  const checks: Array<[string | null | undefined, "PICKUP" | "DROP" | null]> = [
-    [input.morningRouteId, "PICKUP"],
-    [input.afternoonRouteId, "DROP"],
-  ];
-  for (const [routeId, direction] of checks) {
-    if (!routeId) continue;
-    const route = await Route.findOne({ _id: routeId, schoolId, direction });
-    if (!route) throw new AppError(422, "INVALID_ROUTE", "The route does not match the expected direction.");
-  }
-  for (const stopId of [input.morningStopId, input.afternoonStopId]) {
-    if (!stopId) continue;
-    const stop = await Stop.findOne({ _id: stopId, schoolId });
+  const pairs = [
+    { routeId: input.morningRouteId, stopId: input.morningStopId, direction: "PICKUP", stopField: "morningStopId", label: "pickup" },
+    { routeId: input.afternoonRouteId, stopId: input.afternoonStopId, direction: "DROP", stopField: "afternoonStopId", label: "drop" },
+  ] as const;
+  for (const pair of pairs) {
+    const route = pair.routeId ? await Route.findOne({ _id: pair.routeId, schoolId, direction: pair.direction }).select("stops").lean() : null;
+    if (pair.routeId && !route) throw new AppError(422, "INVALID_ROUTE", "The route does not match the expected direction.");
+    if (!pair.stopId) continue;
+    const stop = await Stop.findOne({ _id: pair.stopId, schoolId }).select("_id").lean();
     if (!stop) throw notFound("Stop");
+    const onRoute = (route?.stops || []).some((id: unknown) => String(id) === String(pair.stopId));
+    if (!onRoute) {
+      const reason = route ? `is not on the chosen ${pair.label} route.` : `needs a ${pair.label} route first.`;
+      throw new AppError(422, "STOP_NOT_ON_ROUTE", `This ${pair.label} stop ${reason}`, {
+        fieldErrors: { [pair.stopField]: [`${pair.label === "pickup" ? "Pickup" : "Drop"} stop ${reason}`] },
+      });
+    }
   }
 }
 
@@ -435,7 +503,7 @@ export async function listAssignments(user: AuthUser, query: { page: number; lim
 export async function createAssignment(user: AuthUser, input: z.infer<typeof assignmentSchema>) {
   const schoolId = requireSchoolId(user, input.schoolId);
   if (!input.morningRouteId && !input.afternoonRouteId) {
-    throw new AppError(422, "ROUTE_REQUIRED", "Choose a morning route, an afternoon route, or both.");
+    throw new AppError(422, "ROUTE_REQUIRED", "Choose a pickup route, a drop route, or both.");
   }
   await assertAssignmentLinks(schoolId, input);
   const existing = await Assignment.findOne({ studentId: input.studentId, status: "ACTIVE" });
@@ -468,12 +536,16 @@ export async function updateAssignment(user: AuthUser, id: string, input: z.infe
   const schoolId = requireSchoolId(user, input.schoolId);
   const assignment = await Assignment.findOne({ _id: id, schoolId });
   if (!assignment) throw notFound("Assignment");
+  const current = (value: unknown) => (value ? String(value) : null);
+  const merged = (next: string | null | undefined, stored: unknown) => (next !== undefined ? next : current(stored));
+  const pickupTouched = input.morningRouteId !== undefined || input.morningStopId !== undefined;
+  const dropTouched = input.afternoonRouteId !== undefined || input.afternoonStopId !== undefined;
   await assertAssignmentLinks(schoolId, {
     studentId: input.studentId,
-    morningRouteId: input.morningRouteId,
-    morningStopId: input.morningStopId,
-    afternoonRouteId: input.afternoonRouteId,
-    afternoonStopId: input.afternoonStopId,
+    morningRouteId: pickupTouched ? merged(input.morningRouteId, assignment.morningRouteId) : null,
+    morningStopId: pickupTouched ? merged(input.morningStopId, assignment.morningStopId) : null,
+    afternoonRouteId: dropTouched ? merged(input.afternoonRouteId, assignment.afternoonRouteId) : null,
+    afternoonStopId: dropTouched ? merged(input.afternoonStopId, assignment.afternoonStopId) : null,
   });
   const before = { status: assignment.status };
   if (input.morningRouteId !== undefined) assignment.morningRouteId = input.morningRouteId;

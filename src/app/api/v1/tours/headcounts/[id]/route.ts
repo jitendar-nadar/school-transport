@@ -1,7 +1,7 @@
 import { apiHandler, readJson, readQuery } from "@/lib/api/handler";
 import { ok } from "@/lib/api/http";
 import { listQuerySchema } from "@/lib/validation/common";
-import { createHeadcountSchema, deleteHeadcount, updateHeadcount } from "@/modules/school-records/school-records.service";
+import { createHeadcountSchema, deleteHeadcount, updateHeadcount } from "@/modules/tours/tour.service";
 import { ROLES } from "@/types/domain";
 
 export const runtime = "nodejs";
