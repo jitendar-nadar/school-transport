@@ -43,12 +43,16 @@ export async function listChildren(user: AuthUser) {
 
 export async function childStatus(user: AuthUser, studentId: string) {
   const student = await ownedChild(user, studentId);
-  const latest = await TripStudent.findOne({ schoolId: user.schoolId, studentId })
+  // A running trip always wins over older rows; otherwise the newest trip.
+  const rows = await TripStudent.find({ schoolId: user.schoolId, studentId })
     .sort({ createdAt: -1 })
+    .limit(10)
     .populate({ path: "tripId", select: "status direction scheduledDate vehicleId routeId startedAt endedAt" })
     .populate("assignedStopId", "name")
     .lean();
-  return { student: serialize(student), transport: latest ? serialize(latest) : null };
+  const latest =
+    rows.find((row: { tripId?: { status?: string } | null }) => row.tripId?.status === "ACTIVE") ?? rows[0] ?? null;
+  return { student: serialize(student), transport: latest ? serialize(latest) : null, checkedAt: new Date().toISOString() };
 }
 
 export async function parentActiveTrips(user: AuthUser) {
