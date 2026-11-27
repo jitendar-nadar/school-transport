@@ -8,5 +8,10 @@ export const dynamic = "force-dynamic";
 
 export const GET = publicHandler(async () => {
   await School.estimatedDocumentCount();
-  return ok({ status: "ok", firebase: firebaseReady() && !process.env.FIREBASE_DATABASE_URL ? false : firebaseReady() });
+  // firebase: push is ready. liveDatabase: the optional Realtime Database is also set up.
+  return ok({
+    status: "ok",
+    firebase: firebaseReady(),
+    liveDatabase: firebaseReady() && Boolean(process.env.FIREBASE_DATABASE_URL),
+  });
 });

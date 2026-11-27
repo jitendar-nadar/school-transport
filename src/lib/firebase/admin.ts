@@ -28,7 +28,8 @@ export function firebaseReady() {
       return null;
     }
   })();
-  if (!databaseURL || !serviceAccount) {
+  // The Realtime Database URL is optional: push only needs the service account.
+  if (!serviceAccount) {
     initError = "Firebase Admin is not configured.";
     return false;
   }
@@ -37,7 +38,7 @@ export function firebaseReady() {
     existing ||
     initializeApp({
       credential: cert(serviceAccount),
-      databaseURL,
+      ...(databaseURL ? { databaseURL } : {}),
     });
   void app;
   ready = true;
@@ -45,7 +46,7 @@ export function firebaseReady() {
 }
 
 export function realtimeDb() {
-  if (!firebaseReady()) return null;
+  if (!process.env.FIREBASE_DATABASE_URL || !firebaseReady()) return null;
   return getDatabase();
 }
 

@@ -110,7 +110,7 @@ export async function parentLiveAccess(user: AuthUser, input: z.infer<typeof liv
   const uid = `parent_${user.id}`;
   let customToken: string | null = null;
   let live: Awaited<ReturnType<typeof readActiveTrip>> = null;
-  if (firebaseReady()) {
+  if (firebaseReady() && process.env.FIREBASE_DATABASE_URL) {
     const granted = await grantTripAccess(String(trip._id), uid);
     customToken = await createParentCustomToken(user.id, {
       role: "PARENT",
