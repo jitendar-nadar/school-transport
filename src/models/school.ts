@@ -22,7 +22,7 @@ const settingsSchema = new Schema(
     busLongStopMinutes: { type: Number, default: 10, min: 3, max: 60 },
     busRouteDeviationMeters: { type: Number, default: 400, min: 50, max: 5000 },
     busAutoBoardOnDetect: { type: Boolean, default: true },
-    busAutoDropAtStop: { type: Boolean, default: true },
+    busAutoDropAtStop: { type: Boolean, default: false },
   },
   { _id: false },
 );

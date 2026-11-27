@@ -400,7 +400,9 @@ async function evaluateProximity(input: {
   const vehicle = await Vehicle.findById(trip.vehicleId).select("vehicleNumber").lean();
   const vehicleNumber = vehicle?.vehicleNumber || "the bus";
   const etaThreshold = Number(input.school.settings?.busApproachEtaMinutes || 5);
-  const autoDrop = input.school.settings?.busAutoDropAtStop !== false;
+  // Opt-in only: a drop is normally confirmed by the driver, so the server must
+  // not silently mark students dropped while they are still on the bus.
+  const autoDrop = input.school.settings?.busAutoDropAtStop === true;
 
   for (const row of students) {
     const stop = row.assignedStopId ? stopMap.get(String(row.assignedStopId)) : null;
