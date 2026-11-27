@@ -100,22 +100,40 @@ export async function parentLiveAccess(user: AuthUser, input: z.infer<typeof liv
   if (!trip) throw new AppError(409, "TRIP_NOT_ACTIVE", "Live tracking is available only during an active trip.");
   const row = await TripStudent.findOne({ tripId: trip._id, studentId: input.studentId }).lean();
   if (!row) throw new AppError(403, "FORBIDDEN", "Your child is not assigned to this trip.");
-  const uid = `parent_${user.id}`;
-  const granted = await grantTripAccess(String(trip._id), uid);
-  const customToken = await createParentCustomToken(user.id, {
-    role: "PARENT",
-    schoolId: user.schoolId || "",
-    tripId: String(trip._id),
-  });
-  if (!granted || !customToken) {
-    throw new AppError(503, "FIREBASE_NOT_CONFIGURED", "Live tracking is not configured on the server yet.");
-  }
-
-  const { readActiveTrip } = await import("@/lib/firebase/admin");
+  // Firebase is optional. Without it the position comes from MongoDB, where
+  // the last ping of the trip is stored.
+  const { firebaseReady, readActiveTrip } = await import("@/lib/firebase/admin");
   const { etaMinutes } = await import("@/modules/trips/bus-tracking-rules");
   const { fromPoint, distanceMeters } = await import("@/utils/geo");
   const { Stop } = await import("@/models/fleet");
-  const live = await readActiveTrip(String(trip._id));
+
+  const uid = `parent_${user.id}`;
+  let customToken: string | null = null;
+  let live: Awaited<ReturnType<typeof readActiveTrip>> = null;
+  if (firebaseReady()) {
+    const granted = await grantTripAccess(String(trip._id), uid);
+    customToken = await createParentCustomToken(user.id, {
+      role: "PARENT",
+      schoolId: user.schoolId || "",
+      tripId: String(trip._id),
+    });
+    if (granted && customToken) live = await readActiveTrip(String(trip._id));
+  }
+  const saved = trip.lastKnownLocation;
+  const savedPoint = fromPoint(saved);
+  if (!live && savedPoint) {
+    live = {
+      schoolId: String(trip.schoolId),
+      vehicleId: String(trip.vehicleId),
+      latitude: savedPoint.latitude,
+      longitude: savedPoint.longitude,
+      heading: saved?.heading ?? null,
+      speedKmh: saved?.speedKmh ?? null,
+      accuracyMeters: saved?.accuracyMeters ?? 0,
+      updatedAt: saved?.updatedAt ? new Date(saved.updatedAt).getTime() : 0,
+      status: "ACTIVE",
+    };
+  }
   let eta: { etaMinutes: number; distanceMeters: number; stopName: string } | null = null;
   if (row.assignedStopId) {
     const stop = await Stop.findById(row.assignedStopId).lean();
@@ -135,8 +153,8 @@ export async function parentLiveAccess(user: AuthUser, input: z.infer<typeof liv
 
   return {
     customToken,
-    databaseURL: process.env.FIREBASE_DATABASE_URL,
-    path: `activeTrips/${String(trip._id)}`,
+    databaseURL: customToken ? process.env.FIREBASE_DATABASE_URL : undefined,
+    path: customToken ? `activeTrips/${String(trip._id)}` : undefined,
     uid,
     expiresIn: 3600,
     eta,

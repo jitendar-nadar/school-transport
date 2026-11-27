@@ -172,7 +172,9 @@ export async function applyLocation(user: AuthUser, trip: {
 
   const sampleSeconds = Number(settings.locationSampleSeconds || 60) * 1000;
   const lastSample = trip.lastKnownLocation?.updatedAt ? new Date(trip.lastKnownLocation.updatedAt).getTime() : 0;
-  if (!lastSample || recordedAt.getTime() - lastSample >= sampleSeconds) {
+  const sampleDue = !lastSample || recordedAt.getTime() - lastSample >= sampleSeconds;
+  // Without Firebase the saved position is what parents see, so keep it fresh.
+  if (sampleDue || !firebaseSynced) {
     trip.lastKnownLocation = {
       ...toPoint(point.latitude, point.longitude),
       accuracyMeters: input.accuracyMeters,
@@ -181,6 +183,8 @@ export async function applyLocation(user: AuthUser, trip: {
       updatedAt: recordedAt,
     };
     await trip.save();
+  }
+  if (sampleDue) {
     await TripLocationHistory.create({
       schoolId: trip.schoolId,
       tripId: trip._id,
